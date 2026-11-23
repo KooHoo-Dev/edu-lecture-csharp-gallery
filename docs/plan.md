@@ -8,7 +8,7 @@
 
 | 항목 | 결정 |
 |---|---|
-| 리포 | `KooHoo-Dev/edu-lecture-csharp-gallery` (만들 것). 루트가 웹 앱이다 (패턴 갤러리와 같다) |
+| 리포 | `KooHoo-Dev/edu-lecture-csharp-gallery`. 루트가 웹 앱이다 (패턴 갤러리와 같다) |
 | 표본 | 교안 개념 하나를 보여 주는 짧은 콘솔 프로그램 (C# 9). Unity 에도 그대로 들어간다 |
 | 무대 | 실행 무대 하나 (`src/stage/ExecStage.tsx`): 코드(지금 줄), 메모리(스택 프레임, 정적 영역, 힙, 참조 화살표), 콘솔 |
 | 웹 = 실제 | 기록 도구(`tools/tracer`, Roslyn)가 원본을 실제로 실행한 기록을 재생한다. 웹에 C# 를 옮긴 코드가 없다 |
@@ -63,7 +63,7 @@ edu-lecture-csharp-gallery/
 
 ## 5. 남은 일
 
-1. GitHub 리포 `KooHoo-Dev/edu-lecture-csharp-gallery` 만들기 (Jay), push, Settings > Pages > Source 를 GitHub Actions 로.
+1. GitHub Settings > Pages > Source 를 GitHub Actions 로 (Jay). 리포 생성과 첫 push 는 2026-11-23 에 했다.
 2. 예측 질문 (`steps[].ask`): 그 줄에서 멈추고 보기를 고르게 한 뒤 진행. 설계 4-3절. 무대와 meta 형식.
 3. 기준 샘플 2: 메서드 프레임이 둘 이상인 표본 (`pass-by-value-ref` 또는 `array-alias`). 기준 샘플 2개를 독립 리뷰한 뒤 워커 묶음으로.
 4. 기록 도구: 문자열을 힙 객체로 그리는 선택(`string-immutable`), 박싱된 값을 힙 상자로(`boxing-unboxing`), `ref` 매개변수를 호출한 쪽 변수로 잇는 화살표(`pass-by-value-ref`). 지금 ref 매개변수는 값만 보인다.

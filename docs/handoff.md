@@ -5,7 +5,7 @@
 ## 상태 (2026-11-23)
 
 - 뼈대 완료. 표본 1개(`value-vs-reference`, 기준 샘플 1), 제작 중 카드 15개. `gallery check` 통과, Unity 컴파일 통과.
-- 로컬 리포만 있다 (`C:\Users\user\edu-lecture-csharp-gallery`). GitHub 리포는 아직 없다.
+- 로컬 `C:\Users\user\edu-lecture-csharp-gallery`, GitHub `KooHoo-Dev/edu-lecture-csharp-gallery` (main). Pages 소스를 GitHub Actions 로 바꿔야 배포된다 (plan.md 남은 일 1).
 - 커밋과 push 는 Jay 가 허가한 리포에서만 한다. kit 리포(`C:\Users\user\edu-lecture-gallery-kit`)도 같다.
 
 ## 명령
