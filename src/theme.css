@@ -1,0 +1,10 @@
+/* C# 갤러리 강조색 (보라: C# 로고 계열) */
+:root {
+  --accent: #b48cff;
+  --accent-ink: #1d0b3a;
+  --accent-soft: rgba(180, 140, 255, 0.14);
+}
+:root[data-theme='light'] {
+  --accent: #6b3fc4;
+  --accent-soft: rgba(107, 63, 196, 0.1);
+}

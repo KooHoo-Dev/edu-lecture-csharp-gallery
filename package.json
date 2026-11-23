@@ -1,0 +1,44 @@
+{
+  "name": "csharp-gallery",
+  "version": "0.1.0",
+  "private": true,
+  "description": "C# 기초 갤러리: 짧은 C# 프로그램의 실제 실행 기록을 한 줄씩 재생한다. 유니티 개발자 양성과정 수업용",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "check": "node tools/gallery.mjs check",
+    "live": "node tools/gallery.mjs live",
+    "thumbs": "node tools/gallery.mjs thumbs",
+    "skill": "node tools/gallery.mjs skill",
+    "size": "node tools/gallery.mjs size",
+    "unity-compile": "node tools/gallery.mjs unity-compile",
+    "trace": "node tools/trace.mjs",
+    "kit:sync": "node tools/kit-sync.mjs"
+  },
+  "gallery": {
+    "unityFolders": "samples/{id}",
+    "domainCheck": "tools/check-domain.mjs",
+    "thumbTime": 4.3,
+    "thumbQuery": "auto=0",
+    "checkQuery": "auto=0"
+  },
+  "dependencies": {
+    "@koohoo/gallery-kit": "git+https://github.com/KooHoo-Dev/edu-lecture-gallery-kit.git#v0.1.2",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.0.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

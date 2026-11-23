@@ -1,0 +1,8 @@
+node_modules/
+dist/
+_shots/
+_review/
+*.tgz
+skill/*.zip
+tools/tracer/bin/
+tools/tracer/obj/

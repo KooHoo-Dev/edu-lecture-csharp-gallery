@@ -1,0 +1,314 @@
+// 기록 런타임: 트레이서가 표본과 함께 컴파일하는 도우미 (표본과 같은 C# 9).
+// 기록 호출 __T.L(줄, 변수...) 이 올 때마다 호출 스택(프레임별 변수), 힙(변수에서 닿는 객체), 새 콘솔 출력을 한 칸으로 남긴다.
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
+
+public readonly struct __Var
+{
+    public readonly string Name;
+    public readonly object Value;
+    public __Var(string name, object value) { Name = name; Value = value; }
+}
+
+public sealed class __GalleryTraceLimit : Exception
+{
+    public __GalleryTraceLimit() : base("기록이 너무 길다 (무한 반복이거나 표본이 너무 길다)") { }
+}
+
+public static class __T
+{
+    public const int MaxSteps = 1500;
+    const int MaxItems = 40;
+
+    sealed class Frame
+    {
+        public string Name;
+        public __Var[] Vars = new __Var[0];
+    }
+
+    static readonly List<Frame> frames = new List<Frame>();
+    static readonly List<Dictionary<string, object>> steps = new List<Dictionary<string, object>>();
+    static StringWriter output;
+    static int outputPos;
+
+    public static void Begin()
+    {
+        output = new StringWriter { NewLine = "\n" };
+        Console.SetOut(output);
+        Console.SetIn(new StringReader(""));
+    }
+
+    public static __Var V<T>(string name, T value) => new __Var(name, value);
+
+    public static void Enter(string name) => frames.Add(new Frame { Name = name });
+
+    public static void Exit()
+    {
+        if (frames.Count > 0) frames.RemoveAt(frames.Count - 1);
+    }
+
+    public static void L(int line, params __Var[] vars)
+    {
+        if (frames.Count > 0) frames[frames.Count - 1].Vars = vars;
+        steps.Add(Snap(line));
+        if (steps.Count >= MaxSteps) throw new __GalleryTraceLimit();
+    }
+
+    /// 트레이서가 실행 뒤에 부른다. error 는 잡히지 않은 예외 (없으면 null)
+    public static string Result(string error, bool limit)
+    {
+        var end = new Dictionary<string, object> { ["line"] = steps.Count > 0 ? steps[steps.Count - 1]["line"] : 0, ["end"] = true };
+        string rest = TakeOutput();
+        if (rest.Length > 0) end["out"] = rest;
+        if (error != null && steps.Count > 0)
+        {
+            // 예외로 끝나면 마지막 상태(스택, 힙)를 그대로 보여 준다
+            var last = steps[steps.Count - 1];
+            end["frames"] = last["frames"];
+            end["heap"] = last["heap"];
+            end["error"] = error;
+        }
+        else
+        {
+            end["frames"] = new object[0];
+            end["heap"] = StaticsOnlyHeap();
+        }
+        steps.Add(end);
+        var result = new Dictionary<string, object> { ["steps"] = steps };
+        if (error != null) result["error"] = error;
+        if (limit) result["limit"] = true;
+        return JsonSerializer.Serialize(result, new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+    }
+
+    static string TakeOutput()
+    {
+        if (output == null) return "";
+        string all = output.ToString();
+        string delta = all.Substring(outputPos);
+        outputPos = all.Length;
+        return delta;
+    }
+
+    // ───────── 한 칸 ─────────
+
+    sealed class Snapshot
+    {
+        public readonly Dictionary<object, int> Ids = new Dictionary<object, int>(ReferenceEqualityComparer.Instance);
+        public readonly Queue<object> Pending = new Queue<object>();
+        public readonly List<object> Heap = new List<object>();
+    }
+
+    static Dictionary<string, object> Snap(int line)
+    {
+        var s = new Snapshot();
+        var frameList = new List<object>();
+        var statics = Statics(s);
+        if (statics.Count > 0) frameList.Add(new Dictionary<string, object> { ["name"] = "static", ["vars"] = statics });
+        foreach (var f in frames)
+            frameList.Add(new Dictionary<string, object> { ["name"] = f.Name, ["vars"] = f.Vars.Select(v => new object[] { v.Name, Value(v.Value, s, 0) }).ToList() });
+        Drain(s);
+        var step = new Dictionary<string, object> { ["line"] = line, ["frames"] = frameList, ["heap"] = s.Heap };
+        string delta = TakeOutput();
+        if (delta.Length > 0) step["out"] = delta;
+        return step;
+    }
+
+    static List<object> StaticsOnlyHeap()
+    {
+        var s = new Snapshot();
+        Statics(s);
+        Drain(s);
+        return s.Heap;
+    }
+
+    static void Drain(Snapshot s)
+    {
+        while (s.Pending.Count > 0) s.Heap.Add(HeapObject(s.Pending.Dequeue(), s));
+    }
+
+    static IEnumerable<Type> UserTypes() =>
+        typeof(__T).Assembly.GetTypes().Where(t => !t.Name.StartsWith("__") && !t.Name.Contains("<") && !t.IsGenericTypeDefinition);
+
+    static List<object> Statics(Snapshot s)
+    {
+        var list = new List<object>();
+        foreach (var t in UserTypes())
+            foreach (var f in t.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+            {
+                if (f.IsLiteral || f.Name.Contains("<")) continue;
+                list.Add(new object[] { $"{t.Name}.{f.Name}", Value(f.GetValue(null), s, 0) });
+            }
+        return list;
+    }
+
+    // ───────── 값 ─────────
+
+    static readonly Dictionary<Type, string> Names = new Dictionary<Type, string>
+    {
+        [typeof(int)] = "int", [typeof(long)] = "long", [typeof(short)] = "short", [typeof(byte)] = "byte", [typeof(sbyte)] = "sbyte",
+        [typeof(uint)] = "uint", [typeof(ulong)] = "ulong", [typeof(ushort)] = "ushort", [typeof(float)] = "float", [typeof(double)] = "double",
+        [typeof(decimal)] = "decimal", [typeof(bool)] = "bool", [typeof(char)] = "char", [typeof(string)] = "string", [typeof(object)] = "object",
+    };
+
+    public static string TypeName(Type t)
+    {
+        if (Names.TryGetValue(t, out var n)) return n;
+        if (t.IsArray) return TypeName(t.GetElementType()) + "[" + new string(',', t.GetArrayRank() - 1) + "]";
+        if (t.IsGenericType)
+        {
+            string name = t.Name.Split('`')[0];
+            if (name == "Nullable") return TypeName(t.GetGenericArguments()[0]) + "?";
+            return name + "<" + string.Join(", ", t.GetGenericArguments().Select(TypeName)) + ">";
+        }
+        return t.Name;
+    }
+
+    static bool IsScalar(Type t) => t.IsPrimitive || t.IsEnum || t == typeof(string) || t == typeof(decimal);
+
+    static string Scalar(object v)
+    {
+        switch (v)
+        {
+            case bool b: return b ? "true" : "false";
+            case float f: return f.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+            case double d: return d.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+            case IFormattable x: return x.ToString(null, System.Globalization.CultureInfo.InvariantCulture);
+            default: return v.ToString();
+        }
+    }
+
+    static object Value(object v, Snapshot s, int depth)
+    {
+        if (v == null) return new Dictionary<string, object> { ["k"] = "n" };
+        var t = v.GetType();
+        if (IsScalar(t)) return new Dictionary<string, object> { ["k"] = "v", ["t"] = TypeName(t), ["v"] = t.IsEnum ? t.Name + "." + v : Scalar(v) };
+        if (t.IsValueType)
+        {
+            if (t.Namespace != null && t.Namespace.StartsWith("System") || depth > 3)
+                return new Dictionary<string, object> { ["k"] = "v", ["t"] = TypeName(t), ["v"] = Scalar(v) };
+            return new Dictionary<string, object> { ["k"] = "s", ["t"] = TypeName(t), ["f"] = Fields(v, t, s, depth + 1) };
+        }
+        if (!s.Ids.TryGetValue(v, out int id))
+        {
+            id = s.Ids.Count + 1;
+            s.Ids[v] = id;
+            s.Pending.Enqueue(v);
+        }
+        return new Dictionary<string, object> { ["k"] = "r", ["t"] = TypeName(t), ["id"] = id };
+    }
+
+    static string FieldName(FieldInfo f)
+    {
+        // 자동 속성의 숨은 필드 <Name>k__BackingField 는 속성 이름으로 보인다
+        if (f.Name.StartsWith("<") && f.Name.EndsWith(">k__BackingField")) return f.Name.Substring(1, f.Name.IndexOf('>') - 1);
+        return f.Name;
+    }
+
+    static List<object> Fields(object v, Type t, Snapshot s, int depth)
+    {
+        var list = new List<object>();
+        var chain = new List<Type>();
+        for (var c = t; c != null && c != typeof(object) && c != typeof(ValueType); c = c.BaseType) chain.Insert(0, c);
+        foreach (var c in chain)
+            foreach (var f in c.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+            {
+                if (f.Name.StartsWith("<") && !f.Name.EndsWith(">k__BackingField")) continue;
+                list.Add(new object[] { FieldName(f), Value(f.GetValue(v), s, depth) });
+            }
+        return list;
+    }
+
+    static object HeapObject(object v, Snapshot s)
+    {
+        var t = v.GetType();
+        var o = new Dictionary<string, object> { ["id"] = s.Ids[v], ["t"] = TypeName(t) };
+        if (v is Delegate d)
+        {
+            o["kind"] = "fn";
+            o["f"] = new List<object>();
+            o["text"] = d.Method.Name.Contains("<") ? "람다" : d.Method.Name;
+            return o;
+        }
+        if (t.IsArray)
+        {
+            var a = (Array)v;
+            o["kind"] = "arr";
+            var items = new List<object>();
+            if (a.Rank == 1)
+            {
+                for (int i = 0; i < a.Length && i < MaxItems; i++) items.Add(new object[] { i.ToString(), Value(a.GetValue(i), s, 0) });
+            }
+            else
+            {
+                int n = 0;
+                foreach (var idx in Indices(a))
+                {
+                    if (n++ >= MaxItems) break;
+                    items.Add(new object[] { string.Join(",", idx), Value(a.GetValue(idx), s, 0) });
+                }
+            }
+            o["f"] = items;
+            if (a.Length > MaxItems) o["more"] = a.Length - MaxItems;
+            return o;
+        }
+        bool system = t.Namespace != null && t.Namespace.StartsWith("System");
+        // 컬렉션은 System.Collections(.Generic) 것만 펼친다. LINQ 결과처럼 늦게 계산되는 것을 펼치면 표본 코드가 더 돈다
+        bool collection = t.Namespace == "System.Collections.Generic" || t.Namespace == "System.Collections";
+        if (collection && v is IDictionary dict)
+        {
+            o["kind"] = "dict";
+            var items = new List<object>();
+            foreach (DictionaryEntry e in dict)
+            {
+                if (items.Count >= MaxItems) break;
+                items.Add(new object[] { e.Key is string k ? "\"" + k + "\"" : Scalar(e.Key), Value(e.Value, s, 0) });
+            }
+            o["f"] = items;
+            return o;
+        }
+        if (collection && v is IEnumerable)
+        {
+            o["kind"] = v is IList ? "list" : "seq";
+            var items = new List<object>();
+            int i = 0;
+            foreach (var x in (IEnumerable)v)
+            {
+                if (i >= MaxItems) break;
+                items.Add(new object[] { (i++).ToString(), Value(x, s, 0) });
+            }
+            o["f"] = items;
+            return o;
+        }
+        o["kind"] = "obj";
+        if (system)
+        {
+            // StringBuilder 같은 시스템 객체는 속을 그리지 않고 ToString 이 의미 있을 때만 글로 보인다
+            o["f"] = new List<object>();
+            var ts = t.GetMethod("ToString", Type.EmptyTypes);
+            if (ts != null && ts.DeclaringType != typeof(object)) o["text"] = v.ToString();
+            return o;
+        }
+        o["f"] = Fields(v, t, s, 0);
+        return o;
+    }
+
+    static IEnumerable<int[]> Indices(Array a)
+    {
+        var idx = new int[a.Rank];
+        for (int n = 0; n < a.Length; n++)
+        {
+            yield return (int[])idx.Clone();
+            for (int r = a.Rank - 1; r >= 0; r--)
+            {
+                if (++idx[r] < a.GetLength(r)) break;
+                idx[r] = 0;
+            }
+        }
+    }
+}
