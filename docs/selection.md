@@ -2,6 +2,7 @@
 
 - 작성: 2026-11-23. 근거: 교안 `krKooHoo/krKooHoo.github.io` 의 `docs/01-csharp-basic` (마크다운 56개: 개념 장 40, part6 과제 9, index 7) 를 읽고 정리했다.
 - 상태: 초안. 순서와 범위는 Jay 확인 전이다.
+- 2026-11-24: 교안 Part 1(그룹 A) 모든 장에 표본을 만들었다. 위 카드의 A 묶음 4개에 더해 장마다 하나씩 `variable-reassign`, `float-precision`, `integer-division`, `tryparse-guard`, `if-chain-order`, `loop-accumulator`, `break-one-level`, `jagged-array`, `return-value` (plan.md 4절). 7절의 연산·조건·반복 쟁점은 "실행 결과가 갈리는 실수가 있는 개념만" 으로 넣었다.
 
 ## 0. 요약
 
@@ -21,10 +22,10 @@
 |---|---|---|---|---|---|---|
 | `value-vs-reference` ✅ | 복사인가 공유인가 | B | P2-05 §4.2, P2-02 | p1·p2 상자가 따로, player1·player2 화살표가 객체 하나로 | Point 를 class 로 | `p2.X=100` 뒤 p1.X? |
 | `array-alias` ✅ | 배열 대입은 주소 복사 | A | P1-08 §3.4, part6 04 A6 | 화살표 둘이 배열 하나로, 매개변수도 같은 배열로 | 메서드가 받은 배열을 그대로 고쳐 돌려줌 (대입·Clone 은 입력값으로) | `copy[0]=999` 뒤 `original[0]`? |
-| `pass-by-value-ref` | 값 전달과 ref | A | P1-11 §4 | `AddTen` 프레임의 x 가 사본 / ref | ref 제거 | 호출 뒤 n 은? |
-| `ref-param-reassign` | 매개변수에 new 를 넣으면 | A | P1-11 §3.1, §8 | 매개변수 화살표만 새 객체로 | 필드 수정과 new 재할당 비교 | 원본 Hp 는? |
-| `static-shared-counter` | static 은 하나뿐 | A | P1-12 §5 | 정적 영역 상자와 인스턴스들 | `_nextId` 를 인스턴스 필드로 | `potion.Id`, `CreatedCount`? |
-| `boxing-unboxing` | 박싱과 언박싱 | A | P1-13 §3.5 | 힙에 int 상자 | `(long)boxed` | 어느 줄에서 예외가 나나 |
+| `pass-by-value-ref` ✅ | 값 전달과 ref | A | P1-11 §4 | `AddTen` 프레임의 x 가 사본 / ref | ref 제거 | 호출 뒤 n 은? |
+| `ref-param-reassign` ✅ | 매개변수에 new 를 넣으면 | A | P1-11 §3.1, §8 | 매개변수 화살표만 새 객체로 | 필드 수정과 new 재할당 비교 | 원본 Hp 는? |
+| `static-shared-counter` ✅ | static 은 하나뿐 | A | P1-12 §5 | 정적 영역 상자와 인스턴스들 | `_nextId` 를 인스턴스 필드로 | `potion.Id`, `CreatedCount`? |
+| `boxing-unboxing` ✅ | 박싱과 언박싱 | A | P1-13 §3.5 | 힙에 int 상자 | `(long)boxed` | 어느 줄에서 예외가 나나 |
 | `struct-out-of-array` | 꺼낸 구조체는 사본 | B | P2-02 §3.4 | 배열 칸과 지역 사본 | 되돌려 쓰기 누락 | `students[0].KoreanScore`? |
 | `struct-field-vs-class-field` | 위치는 복사, 무기는 공유 | B | P2-05 §5 | 객체 안 Vector2 값과 Weapon 화살표 | 위치 사본만 고치기 | `hero.Position`, 무기 공격력? |
 | `stack-frames` | 호출과 복귀 | B | P2-03 §4.2 | 프레임이 쌓였다 걷힘, 재귀 | `Factorial(13)` int 오버플로 | 가장 깊을 때 프레임 수 |

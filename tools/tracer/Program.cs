@@ -6,6 +6,7 @@
 //   2. 메서드·생성자·로컬 함수의 본문 문장마다 앞에 __T.L(원래 줄, 보이는 변수...) 을 끼우고, 본문을 __T.Enter / Exit 로 감싼다
 //   3. C# 9 로 컴파일해 메모리에서 실행하고 런타임(Runtime.cs)이 모은 기록을 받는다
 // 한계: 선언할 때 초기화하지 않은 지역 변수, 속성 접근자·람다 안 문장, out 매개변수는 기록하지 않는다 (docs/specimen-guide.md).
+// ref · in 매개변수는 부른 쪽 변수(지역 변수, 매개변수, 정적 필드)와 잇는다. 부르는 문장 앞에서 __T.RefArg 로 남기고 Enter 가 가져간다.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -181,13 +182,13 @@ sealed class Instrument : CSharpSyntaxRewriter
     }
 
     /// 이 문장 앞에서 보이고 값이 확실히 정해진 이름들 (가까운 것부터)
-    List<(string code, string label)> Visible(StatementSyntax s)
+    List<(string code, string label, bool isRef)> Visible(StatementSyntax s)
     {
-        var names = new List<(string, string)>();
+        var names = new List<(string, string, bool)>();
         var seen = new HashSet<string>();
-        void Add(SyntaxToken id)
+        void Add(SyntaxToken id, bool isRef = false)
         {
-            if (seen.Add(id.ValueText)) names.Add((id.Text, id.ValueText));
+            if (seen.Add(id.ValueText)) names.Add((id.Text, id.ValueText, isRef));
         }
         void AddDecl(VariableDeclarationSyntax decl)
         {
@@ -225,7 +226,7 @@ sealed class Instrument : CSharpSyntaxRewriter
             {
                 var ps = parent is BaseMethodDeclarationSyntax m ? m.ParameterList : ((LocalFunctionStatementSyntax)parent).ParameterList;
                 foreach (var p in ps.Parameters.Reverse())
-                    if (!p.Modifiers.Any(SyntaxKind.OutKeyword)) Add(p.Identifier);
+                    if (!p.Modifiers.Any(SyntaxKind.OutKeyword)) Add(p.Identifier, IsRefParam(p));
                 bool isStatic = parent is BaseMethodDeclarationSyntax bm ? bm.Modifiers.Any(SyntaxKind.StaticKeyword) : ((LocalFunctionStatementSyntax)parent).Modifiers.Any(SyntaxKind.StaticKeyword);
                 var type = parent.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault();
                 bool structCtor = parent is ConstructorDeclarationSyntax && type is StructDeclarationSyntax;
@@ -236,7 +237,7 @@ sealed class Instrument : CSharpSyntaxRewriter
                     isStatic = isStatic || outer == null || outer.Modifiers.Any(SyntaxKind.StaticKeyword);
                     structCtor = outer is ConstructorDeclarationSyntax && type is StructDeclarationSyntax;
                 }
-                if (!isStatic && !structCtor && type != null) names.Add(("this", "this"));
+                if (!isStatic && !structCtor && type != null) names.Add(("this", "this", false));
                 break;
             }
             cur = parent;
@@ -245,12 +246,44 @@ sealed class Instrument : CSharpSyntaxRewriter
         return names;
     }
 
-    StatementSyntax LineCall(StatementSyntax original)
+    static bool IsRefParam(ParameterSyntax p) => p.Modifiers.Any(SyntaxKind.RefKeyword) || p.Modifiers.Any(SyntaxKind.InKeyword);
+
+    /// 문장 앞에 끼우는 기록: __T.L(줄, 보이는 변수...) 과, 이 문장이 부르는 메서드의 ref 인자 (__T.RefArg)
+    List<StatementSyntax> LineCall(StatementSyntax original)
     {
         var args = new List<ArgumentSyntax> { Argument(LiteralExpression(SyntaxKind.NumericLiteralExpression, Literal(Line(original)))) };
-        foreach (var (code, label) in Visible(original))
-            args.Add(Argument(ParseExpression($"__T.V({SymbolDisplay.FormatLiteral(label, true)}, {code})")));
-        return ExpressionStatement(InvocationExpression(ParseExpression("__T.L"), ArgumentList(SeparatedList(args)))).NormalizeWhitespace();
+        foreach (var (code, label, isRef) in Visible(original))
+            args.Add(Argument(ParseExpression($"__T.{(isRef ? "VR" : "V")}({SymbolDisplay.FormatLiteral(label, true)}, {code})")));
+        var list = new List<StatementSyntax> { ExpressionStatement(InvocationExpression(ParseExpression("__T.L"), ArgumentList(SeparatedList(args)))).NormalizeWhitespace() };
+        foreach (var (method, param, target) in RefArgs(original))
+            list.Add(ParseStatement($"__T.RefArg({SymbolDisplay.FormatLiteral(method, true)}, {SymbolDisplay.FormatLiteral(param, true)}, {SymbolDisplay.FormatLiteral(target, true)});"));
+        return list;
+    }
+
+    /// 이 문장(안쪽 문장 제외)이 부르는 표본 메서드의 ref · in 인자: (메서드 이름, 매개변수, 부른 쪽 변수)
+    /// 부른 쪽 변수는 지역 변수·매개변수 이름, 정적 필드는 "static:형식.필드", 그 밖(배열 칸, 객체 필드)은 ""
+    IEnumerable<(string method, string param, string target)> RefArgs(StatementSyntax original)
+    {
+        foreach (var inv in original.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            if (inv.FirstAncestorOrSelf<StatementSyntax>() != original) continue;
+            if (model.GetSymbolInfo(inv).Symbol is not IMethodSymbol m || !m.Locations.Any(l => l.IsInSource)) continue;
+            var a = inv.ArgumentList.Arguments;
+            for (int i = 0; i < a.Count; i++)
+            {
+                if (!a[i].RefKindKeyword.IsKind(SyntaxKind.RefKeyword) && !a[i].RefKindKeyword.IsKind(SyntaxKind.InKeyword)) continue;
+                var p = a[i].NameColon != null ? m.Parameters.FirstOrDefault(x => x.Name == a[i].NameColon.Name.Identifier.ValueText) : i < m.Parameters.Length ? m.Parameters[i] : null;
+                if (p == null) continue;
+                string target = model.GetSymbolInfo(a[i].Expression).Symbol switch
+                {
+                    ILocalSymbol l when a[i].Expression is IdentifierNameSyntax => l.Name,
+                    IParameterSymbol ps when a[i].Expression is IdentifierNameSyntax => ps.Name,
+                    IFieldSymbol f when f.IsStatic => $"static:{f.ContainingType.Name}.{f.Name}",
+                    _ => "",
+                };
+                yield return (m.Name, p.Name, target);
+            }
+        }
     }
 
     static readonly StatementSyntax Exit = ParseStatement("__T.Exit();");
@@ -266,7 +299,7 @@ sealed class Instrument : CSharpSyntaxRewriter
         foreach (var s in node.Statements)
         {
             var visited = (StatementSyntax)Visit(s);
-            if (Traceable(s)) list.Add(LineCall(s));
+            if (Traceable(s)) list.AddRange(LineCall(s));
             list.Add(visited);
         }
         return node.WithStatements(List(list));
@@ -278,7 +311,7 @@ sealed class Instrument : CSharpSyntaxRewriter
         foreach (var s in node.Statements)
         {
             var visited = (StatementSyntax)Visit(s);
-            if (Traceable(s)) list.Add(LineCall(s));
+            if (Traceable(s)) list.AddRange(LineCall(s));
             list.Add(visited);
         }
         return node.WithLabels(VisitList(node.Labels)).WithStatements(List(list));
@@ -289,7 +322,7 @@ sealed class Instrument : CSharpSyntaxRewriter
     {
         var visited = (StatementSyntax)Visit(original);
         if (original is BlockSyntax || !Traceable(original)) return visited;
-        return Block(LineCall(original), visited);
+        return Block(LineCall(original).Append(visited));
     }
 
     public override SyntaxNode VisitIfStatement(IfStatementSyntax node) =>
@@ -326,7 +359,7 @@ sealed class Instrument : CSharpSyntaxRewriter
     {
         var sb = new StringBuilder();
         foreach (var p in ps.Parameters)
-            if (!p.Modifiers.Any(SyntaxKind.OutKeyword)) sb.Append($", __T.V({SymbolDisplay.FormatLiteral(p.Identifier.ValueText, true)}, {p.Identifier.Text})");
+            if (!p.Modifiers.Any(SyntaxKind.OutKeyword)) sb.Append($", __T.{(IsRefParam(p) ? "VR" : "V")}({SymbolDisplay.FormatLiteral(p.Identifier.ValueText, true)}, {p.Identifier.Text})");
         if (!isStatic) sb.Append(", __T.V(\"this\", this)");
         return sb.ToString();
     }

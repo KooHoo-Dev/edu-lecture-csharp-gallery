@@ -2,9 +2,10 @@
 
 새 세션은 이 문서, `docs/plan.md`, `docs/specimen-guide.md` 순서로 읽는다. 공통 틀은 `node_modules/@koohoo/gallery-kit/docs/` (kit-guide, design).
 
-## 상태 (2026-11-23)
+## 상태 (2026-11-24)
 
-- 뼈대 완료. 표본 2개(기준 샘플 `value-vs-reference`, `array-alias`), 제작 중 카드 14개. `gallery check` 통과, Unity 컴파일 통과.
+- 표본 15개: 기준 샘플 2개(`value-vs-reference`, `array-alias`) + 교안 Part 1 표본 13개 (plan.md 4절). Part 1(그룹 A)은 모든 장에 표본이 있다. 제작 중 카드 10개(B~E). `gallery check` 통과(경고 0), Unity 컴파일 통과.
+- 기록 도구가 ref 화살표와 박싱 상자를 그린다 (specimen-guide 2절). 다음 공통 작업 후보는 plan.md 남은 일 7~11.
 - 로컬 `C:\Users\user\edu-lecture-csharp-gallery`, GitHub `KooHoo-Dev/edu-lecture-csharp-gallery` (main). Pages 소스를 GitHub Actions 로 바꿔야 배포된다 (plan.md 남은 일 1).
 - 커밋과 push 는 Jay 가 허가한 리포에서만 한다. kit 리포(`C:\Users\user\edu-lecture-gallery-kit`)도 같다.
 

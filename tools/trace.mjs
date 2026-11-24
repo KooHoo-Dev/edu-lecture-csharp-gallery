@@ -1,6 +1,7 @@
 // 실행 기록 만들기: 표본 C# 를 기록 도구(tools/tracer, dotnet)로 실행해 truth/<id>/trace.json 을 쓴다.
 //   npm run trace                 모든 표본
 //   npm run trace -- <id> ...     지정한 표본
+//   npm run trace -- <id> --no-build   기록 도구를 다시 빌드하지 않는다 (동시에 여러 표본을 기록할 때)
 // 입력 조합(meta.params 의 select 값 × toggle)마다 보통 실행, 원본에 #if GALLERY_MISTAKE 가 있으면 그것을 켠 실행도 남긴다.
 // .NET SDK 10 이 있어야 한다. CI 는 커밋된 기록으로 검사하므로 dotnet 이 필요 없다.
 
@@ -19,10 +20,14 @@ const all = readdirSync(join(ROOT, 'src', 'specimens'), { withFileTypes: true })
 const ids = process.argv.slice(2).filter(a => !a.startsWith('--'))
 for (const id of ids) if (!all.includes(id)) fail(`표본 폴더가 없다: src/specimens/${id}`)
 
-console.log('기록 도구 빌드 (dotnet build)')
-const build = spawnSync('dotnet', ['build', TRACER, '-c', 'Release', '-v', 'q', '-nologo'], { encoding: 'utf8' })
-if (build.status !== 0) fail(`기록 도구 빌드 실패\n${build.stdout}\n${build.stderr}`)
 const dll = join(TRACER, 'bin', 'Release', 'net10.0', 'Tracer.dll')
+// --no-build: 이미 빌드한 기록 도구를 쓴다 (여러 표본을 동시에 기록할 때 dotnet build 가 서로 파일을 잠그지 않게)
+if (process.argv.includes('--no-build') && existsSync(dll)) console.log('기록 도구 빌드 건너뜀 (--no-build)')
+else {
+  console.log('기록 도구 빌드 (dotnet build)')
+  const build = spawnSync('dotnet', ['build', TRACER, '-c', 'Release', '-v', 'q', '-nologo'], { encoding: 'utf8' })
+  if (build.status !== 0) fail(`기록 도구 빌드 실패\n${build.stdout}\n${build.stderr}`)
+}
 
 const { allCombos, runKey, MAX_COMBOS } = await loadTypes(ROOT)
 let failed = false

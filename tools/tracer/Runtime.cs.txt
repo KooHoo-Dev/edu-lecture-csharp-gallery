@@ -14,7 +14,11 @@ public readonly struct __Var
 {
     public readonly string Name;
     public readonly object Value;
-    public __Var(string name, object value) { Name = name; Value = value; }
+    /// 선언 형식이 참조 형식(object, 인터페이스)인데 값 타입이 들어 있다 = 박싱된 상자다
+    public readonly bool Boxed;
+    /// ref · in 매개변수 (부른 쪽 변수를 가리킨다)
+    public readonly bool IsRef;
+    public __Var(string name, object value, bool boxed, bool isRef) { Name = name; Value = value; Boxed = boxed; IsRef = isRef; }
 }
 
 public sealed class __GalleryTraceLimit : Exception
@@ -31,9 +35,14 @@ public static class __T
     {
         public string Name;
         public __Var[] Vars = new __Var[0];
+        /// ref 매개변수 이름 → 부른 쪽 (프레임 번호, 변수 이름). 프레임 번호 -1 은 정적 영역
+        public readonly Dictionary<string, (int frame, string name)> Refs = new Dictionary<string, (int, string)>();
     }
 
     static readonly List<Frame> frames = new List<Frame>();
+
+    /// 부르기 직전에 남긴 ref 인자 (메서드, 매개변수, 부른 쪽 프레임, 부른 쪽 변수). Enter 가 가져간다
+    static readonly List<(string method, string param, int depth, string target)> pendingRefs = new List<(string, string, int, string)>();
     static readonly List<Dictionary<string, object>> steps = new List<Dictionary<string, object>>();
     static StringWriter output;
     static int outputPos;
@@ -45,9 +54,34 @@ public static class __T
         Console.SetIn(new StringReader(""));
     }
 
-    public static __Var V<T>(string name, T value) => new __Var(name, value);
+    public static __Var V<T>(string name, T value) => new __Var(name, value, IsBoxed(typeof(T), value), false);
 
-    public static void Enter(string name) => frames.Add(new Frame { Name = name });
+    /// ref · in 매개변수
+    public static __Var VR<T>(string name, T value) => new __Var(name, value, IsBoxed(typeof(T), value), true);
+
+    /// 참조 형식 자리(object, 인터페이스)에 값 타입이 들어 있으면 박싱된 상자다
+    static bool IsBoxed(Type declared, object v) => v != null && !declared.IsValueType && v.GetType().IsValueType;
+
+    /// 이 문장이 부를 메서드의 ref 인자. target 은 부른 쪽 변수 이름, "static:형식.필드", 모르면 ""
+    public static void RefArg(string method, string param, string target) => pendingRefs.Add((method, param, frames.Count - 1, target));
+
+    public static void Enter(string name)
+    {
+        var f = new Frame { Name = name };
+        int caller = frames.Count - 1;
+        for (int i = pendingRefs.Count - 1; i >= 0; i--)
+        {
+            var p = pendingRefs[i];
+            if (p.method != name || p.depth != caller) continue;
+            if (!f.Refs.ContainsKey(p.param))
+            {
+                if (p.target.StartsWith("static:")) f.Refs[p.param] = (-1, p.target.Substring(7));
+                else if (p.target.Length > 0) f.Refs[p.param] = (caller, p.target);
+            }
+            pendingRefs.RemoveAt(i);
+        }
+        frames.Add(f);
+    }
 
     public static void Exit()
     {
@@ -56,6 +90,8 @@ public static class __T
 
     public static void L(int line, params __Var[] vars)
     {
+        // 이 프레임(과 더 깊은 프레임)이 앞 문장에서 남긴 ref 인자는 이제 쓰이지 않는다
+        pendingRefs.RemoveAll(p => p.depth >= frames.Count - 1);
         if (frames.Count > 0) frames[frames.Count - 1].Vars = vars;
         steps.Add(Snap(line));
         if (steps.Count >= MaxSteps) throw new __GalleryTraceLimit();
@@ -118,9 +154,42 @@ public static class __T
         var s = new Snapshot();
         var frameList = new List<object>();
         var statics = Statics(s);
+        int offset = statics.Count > 0 ? 1 : 0;
         if (statics.Count > 0) frameList.Add(new Dictionary<string, object> { ["name"] = "static", ["vars"] = statics });
+        var varLists = new List<List<object[]>>();
         foreach (var f in frames)
-            frameList.Add(new Dictionary<string, object> { ["name"] = f.Name, ["vars"] = f.Vars.Select(v => new object[] { v.Name, Value(v.Value, s, 0) }).ToList() });
+        {
+            var vars = new List<object[]>();
+            foreach (var v in f.Vars)
+            {
+                object val = Value(v.Value, s, 0, v.Boxed);
+                if (v.IsRef)
+                {
+                    // ref 매개변수: 값과 함께 부른 쪽 변수의 자리(무대의 프레임 번호, 이름)를 남긴다
+                    var r = new Dictionary<string, object> { ["k"] = "ref", ["v"] = val };
+                    if (f.Refs.TryGetValue(v.Name, out var to))
+                        r["to"] = new object[] { to.frame < 0 ? 0 : to.frame + offset, to.name };
+                    val = r;
+                }
+                vars.Add(new object[] { v.Name, val });
+            }
+            varLists.Add(vars);
+            frameList.Add(new Dictionary<string, object> { ["name"] = f.Name, ["vars"] = vars });
+        }
+        // 부른 쪽 변수는 그 프레임이 마지막으로 기록한 값이라, ref 로 고친 값이 아직 없다. ref 매개변수의 지금 값으로 바꿔 둔다 (같은 자리다).
+        // 위 프레임부터 내려가야 ref 를 다시 ref 로 넘긴 사슬도 이어진다
+        for (int i = frames.Count - 1; i >= 0; i--)
+            foreach (var pair in varLists[i])
+            {
+                if (!(pair[1] is Dictionary<string, object> r) || !r.ContainsKey("to")) continue;
+                if (!frames[i].Refs.TryGetValue((string)pair[0], out var to) || to.frame < 0 || to.frame >= i) continue;
+                foreach (var target in varLists[to.frame])
+                {
+                    if ((string)target[0] != to.name) continue;
+                    if (target[1] is Dictionary<string, object> tr && (string)tr["k"] == "ref") tr["v"] = r["v"];
+                    else target[1] = r["v"];
+                }
+            }
         Drain(s);
         var step = new Dictionary<string, object> { ["line"] = line, ["frames"] = frameList, ["heap"] = s.Heap };
         string delta = TakeOutput();
@@ -151,7 +220,8 @@ public static class __T
             foreach (var f in t.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
             {
                 if (f.IsLiteral || f.Name.Contains("<")) continue;
-                list.Add(new object[] { $"{t.Name}.{f.Name}", Value(f.GetValue(null), s, 0) });
+                object v = f.GetValue(null);
+                list.Add(new object[] { $"{t.Name}.{f.Name}", Value(v, s, 0, IsBoxed(f.FieldType, v)) });
             }
         return list;
     }
@@ -192,10 +262,12 @@ public static class __T
         }
     }
 
-    static object Value(object v, Snapshot s, int depth)
+    /// boxed: 참조 형식 자리에 든 값 타입이다. 값이 아니라 힙의 상자를 가리키는 참조로 그린다
+    static object Value(object v, Snapshot s, int depth, bool boxed = false)
     {
         if (v == null) return new Dictionary<string, object> { ["k"] = "n" };
         var t = v.GetType();
+        if (boxed) return Ref(v, t, s);
         if (IsScalar(t)) return new Dictionary<string, object> { ["k"] = "v", ["t"] = TypeName(t), ["v"] = t.IsEnum ? t.Name + "." + v : Scalar(v) };
         if (t.IsValueType)
         {
@@ -203,6 +275,11 @@ public static class __T
                 return new Dictionary<string, object> { ["k"] = "v", ["t"] = TypeName(t), ["v"] = Scalar(v) };
             return new Dictionary<string, object> { ["k"] = "s", ["t"] = TypeName(t), ["f"] = Fields(v, t, s, depth + 1) };
         }
+        return Ref(v, t, s);
+    }
+
+    static object Ref(object v, Type t, Snapshot s)
+    {
         if (!s.Ids.TryGetValue(v, out int id))
         {
             id = IdOf(v);
@@ -228,7 +305,8 @@ public static class __T
             foreach (var f in c.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
             {
                 if (f.Name.StartsWith("<") && !f.Name.EndsWith(">k__BackingField")) continue;
-                list.Add(new object[] { FieldName(f), Value(f.GetValue(v), s, depth) });
+                object x = f.GetValue(v);
+                list.Add(new object[] { FieldName(f), Value(x, s, depth, IsBoxed(f.FieldType, x)) });
             }
         return list;
     }
@@ -237,6 +315,15 @@ public static class __T
     {
         var t = v.GetType();
         var o = new Dictionary<string, object> { ["id"] = s.Ids[v], ["t"] = TypeName(t) };
+        if (t.IsValueType)
+        {
+            // 박싱된 값: 힙의 상자 안에 값 하나(또는 구조체 필드)가 들어 있다
+            o["kind"] = "box";
+            bool plain = IsScalar(t) || t.Namespace != null && t.Namespace.StartsWith("System");
+            o["f"] = plain ? new List<object>() : Fields(v, t, s, 1);
+            if (plain) o["text"] = t.IsEnum ? t.Name + "." + v : Scalar(v);
+            return o;
+        }
         if (v is Delegate d)
         {
             o["kind"] = "fn";
@@ -247,11 +334,12 @@ public static class __T
         if (t.IsArray)
         {
             var a = (Array)v;
+            var elem = t.GetElementType();
             o["kind"] = "arr";
             var items = new List<object>();
             if (a.Rank == 1)
             {
-                for (int i = 0; i < a.Length && i < MaxItems; i++) items.Add(new object[] { i.ToString(), Value(a.GetValue(i), s, 0) });
+                for (int i = 0; i < a.Length && i < MaxItems; i++) items.Add(new object[] { i.ToString(), Item(a.GetValue(i), elem, s) });
             }
             else
             {
@@ -259,7 +347,7 @@ public static class __T
                 foreach (var idx in Indices(a))
                 {
                     if (n++ >= MaxItems) break;
-                    items.Add(new object[] { string.Join(",", idx), Value(a.GetValue(idx), s, 0) });
+                    items.Add(new object[] { string.Join(",", idx), Item(a.GetValue(idx), elem, s) });
                 }
             }
             o["f"] = items;
@@ -276,7 +364,7 @@ public static class __T
             foreach (DictionaryEntry e in dict)
             {
                 if (items.Count >= MaxItems) break;
-                items.Add(new object[] { e.Key is string k ? "\"" + k + "\"" : Scalar(e.Key), Value(e.Value, s, 0) });
+                items.Add(new object[] { e.Key is string k ? "\"" + k + "\"" : Scalar(e.Key), Item(e.Value, ElementType(t, 1), s) });
             }
             o["f"] = items;
             return o;
@@ -289,7 +377,7 @@ public static class __T
             foreach (var x in (IEnumerable)v)
             {
                 if (i >= MaxItems) break;
-                items.Add(new object[] { (i++).ToString(), Value(x, s, 0) });
+                items.Add(new object[] { (i++).ToString(), Item(x, ElementType(t, 0), s) });
             }
             o["f"] = items;
             return o;
@@ -305,6 +393,16 @@ public static class __T
         }
         o["f"] = Fields(v, t, s, 0);
         return o;
+    }
+
+    /// 배열·컬렉션 칸. 칸 형식이 object 같은 참조 형식인데 값 타입이 들어 있으면 박싱된 상자다
+    static object Item(object x, Type declared, Snapshot s) => Value(x, s, 0, IsBoxed(declared, x));
+
+    /// 제네릭 컬렉션의 칸 형식 (List<T> 는 T, Dictionary<K, V> 의 값은 V). 비제네릭은 object
+    static Type ElementType(Type t, int arg)
+    {
+        var args = t.IsGenericType ? t.GetGenericArguments() : Type.EmptyTypes;
+        return arg < args.Length ? args[arg] : typeof(object);
     }
 
     static IEnumerable<int[]> Indices(Array a)

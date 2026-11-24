@@ -74,11 +74,25 @@ edu-lecture-csharp-gallery/
 - Jay 결정: 비유는 강사가 말로 설명한다. 무대에서 비유를 모두 걷어 냈다 (장면·대본·three 의존성). 무대는 다시 코드 + 메모리 + 콘솔 한 화면이다.
 - 남긴 것: 기록 런타임의 힙 객체 번호를 실제 객체 정체성으로 고정한 것 (남은 일 5). 단계가 바뀌어도 같은 객체가 같은 번호라 메모리 그림 비교에도 낫다.
 
+### 2026-11-24 교안 Part 1 표본 13개
+
+- 기록 도구: `ref` · `in` 매개변수를 부른 쪽 변수(지역 변수, 매개변수, 정적 필드)로 잇는다. 부르는 문장 앞에서 `__T.RefArg` 로 남기고 `Enter` 가 가져가며, 부른 쪽 변수 칸은 ref 매개변수의 지금 값으로 바꿔 보인다 (같은 자리라서). `object` · 인터페이스 자리의 값 타입은 힙의 박싱 상자(`kind: 'box'`)로 그린다. 무대는 ref 를 초록 점선 상자와 화살표로, 박싱 상자를 `int (박싱된 값)` 으로 그린다. 기존 두 표본은 기록을 다시 만들었고 지문 말고는 같다.
+- `npm run trace -- <id> --no-build`: 여러 표본을 동시에 기록할 때 dotnet build 가 서로 파일을 잠그지 않게.
+- 표본 13개 (그룹 A, order = 교안 장 순서. `array-alias` 는 8): `variable-reassign`(01), `float-precision`(02), `integer-division`(03), `tryparse-guard`(04), `if-chain-order`(05), `loop-accumulator`(06), `break-one-level`(07), `jagged-array`(09), `return-value`(10), `pass-by-value-ref` · `ref-param-reassign`(11), `static-shared-counter`(12), `boxing-unboxing`(13). 연산·조건·반복 장도 실행 결과가 갈리는 실수가 있는 개념만 골랐다 (selection.md 7절 쟁점에 대한 답).
+- 만든 방법: 워크플로우로 제작 7묶음을 병렬로 돌리고, 리뷰어 2명이 기록 출력·단계 화면·효과 끄기 화면을 대조해 고쳤다. 전체 `gallery check` 통과(경고 0), Unity 컴파일 15개 통과, Skill 31개 파일.
+- 무대: 예외 문구를 자르지 않고 3줄까지 접는다 (`boxing-unboxing` 의 `System.Int32 → System.Int64` 가 보이게). 정적 영역 이름 칸을 넓혔다.
+
 ## 5. 남은 일
 
 1. GitHub Settings > Pages > Source 를 GitHub Actions 로 (Jay). 리포 생성과 첫 push 는 2026-11-23 에 했다.
 2. 예측 질문 (`steps[].ask`): 그 줄에서 멈추고 보기를 고르게 한 뒤 진행. 설계 4-3절. 무대와 meta 형식.
 3. 기준 샘플 2개(`value-vs-reference`, `array-alias`) 독립 리뷰. 그 뒤 워커 묶음으로.
-4. 기록 도구: 문자열을 힙 객체로 그리는 선택(`string-immutable`), 박싱된 값을 힙 상자로(`boxing-unboxing`), `ref` 매개변수를 호출한 쪽 변수로 잇는 화살표(`pass-by-value-ref`). 지금 ref 매개변수는 값만 보인다.
+4. 기록 도구: 문자열을 힙 객체로 그리는 선택(`string-immutable`). 박싱 상자와 ref 화살표는 2026-11-24 에 했다.
 5. (해결 2026-11-24) 힙 객체 번호를 실제 객체 정체성으로 고정했다.
-6. JayDispatch 잡 틀 (`jobs/`, `tools/workflow/`): 패턴 갤러리 것을 가져와 writePaths(`samples/<id>/`, `src/specimens/<id>/`, `truth/<id>/`, `src/shots/<id>/`), verify(`npm run trace -- <id>`, `check <id>`, `unity-compile <id>`) 로 바꾼다.
+6. JayDispatch 잡 틀 (`jobs/`, `tools/workflow/`): 패턴 갤러리 것을 가져와 writePaths(`samples/<id>/`, `src/specimens/<id>/`, `truth/<id>/`, `src/shots/<id>/`), verify(`npm run trace -- <id> --no-build`, `check <id>`, `unity-compile <id>`) 로 바꾼다.
+7. 기록 도구: `else if` 조건, `for`·`while` 조건 검사를 칸으로 남기기 (조건식 값 true/false 표시도). 지금은 `if-chain-order` 가 갈래를 한 줄로 써서 피해 갔다.
+8. 무대: 힙이 한 열이라 객체 5~6개를 넘으면 접힌다 (`static-shared-counter` 의 4개 프리셋, `jagged-array`). 두 열 배치나 넘칠 때 줄 높이 줄이기. heap-reachability, List 계열 전에 필요하다.
+9. 단계 표시: 핵심 줄이 `#if GALLERY_MISTAKE` 구역 안에 있으면 다음 공통 줄에 둘 수밖에 없어 한 칸 뒤 화면이 된다 (`variable-reassign`, `float-precision`). '구역 직후' 표시 방법을 검토.
+10. 도메인 검사: namespace 를 id 의 단어 첫 글자만 대문자로 보므로 `tryparse-guard` 는 `CSharpGallery.TryparseGuard` 다 (대소문자 무시 비교 검토). `Console.ReadLine` 금지 검사가 주석에도 걸린다.
+11. 썸네일 시각을 표본마다 정하는 칸 (`pass-by-value-ref` 처럼 핵심 그림이 늦게 나오는 표본).
+12. 교안 수정 (krKooHoo.github.io): `02_datatype.md` 99~100줄의 `Console.WriteLine(1234567.8f) // 1234568` 은 .NET Core 3.0 이후 `1234567.8` 이다 (`float-precision` 리뷰에서 발견).

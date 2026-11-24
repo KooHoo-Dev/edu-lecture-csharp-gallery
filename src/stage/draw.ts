@@ -19,6 +19,8 @@ export const C = {
   value: '#1d2a3a',
   valueEdge: '#3d5a80',
   ref: '#58a6ff',
+  /** ref 매개변수가 부른 쪽 변수를 가리키는 선 */
+  alias: '#3fb950',
   heap: '#1b2230',
   heapEdge: '#465870',
   bug: '#ff6b6b',
@@ -197,11 +199,14 @@ export function valText(v: Val): string {
       return `{ ${v.f.map(([n, x]) => `${n} = ${valText(x)}`).join(', ')} }`
     case 'r':
       return `→ ${v.t}`
+    case 'ref':
+      return `ref ${valText(v.v)}`
   }
 }
 
 /** 바뀐 값 찾기용 열쇠 (참조는 가리키는 객체 번호로) */
 function valKey(v: Val): string {
+  if (v.k === 'ref') return `ref:${valKey(v.v)}`
   return v.k === 'r' ? `#${v.id}` : valText(v)
 }
 
@@ -261,8 +266,12 @@ export function drawMemory(g: CanvasRenderingContext2D, r: Rect, step: TraceStep
 
   /** edge = 상자 오른쪽 끝 (화살표가 상자 밖으로 나온 뒤 휜다) */
   const arrows: { from: Anchor; edge: number; to: number; fromHeap: boolean }[] = []
+  /** ref 매개변수 → 부른 쪽 변수 칸 ('프레임 번호/이름') */
+  const aliases: { from: Anchor; to: string }[] = []
+  /** 스택 변수 칸의 오른쪽 끝 ('프레임 번호/이름' → 자리). ref 선의 끝 */
+  const slots = new Map<string, Anchor>()
 
-  const drawRows = (fields: Field[], x: number, y: number, w: number, owner: string, nameW: number) => {
+  const drawRows = (fields: Field[], x: number, y: number, w: number, owner: string, nameW: number, frameNo = -1) => {
     fields.forEach(([name, v], i) => {
       const ry = y + i * ROW
       const key = `${owner}/${name}`
@@ -276,7 +285,32 @@ export function drawMemory(g: CanvasRenderingContext2D, r: Rect, step: TraceStep
       g.textBaseline = 'middle'
       g.fillStyle = C.text
       g.fillText(clipText(g, name, nameW - 14), x + 10, ry + ROW / 2)
-      if (v.k === 'r') {
+      if (frameNo >= 0) slots.set(`${frameNo}/${name}`, { x: cellX + cellW, y: ry + ROW / 2 })
+      if (v.k === 'ref') {
+        // ref 매개변수: 자기 칸이 따로 없다. 부른 쪽 변수를 초록 점선으로 가리키고, 그 변수의 지금 값을 보인다
+        g.fillStyle = C.value
+        g.strokeStyle = changed(key, v) ? C.changed : C.alias
+        g.setLineDash([5, 3])
+        roundRect(g, cellX, ry + 3, cellW, ROW - 6, 5)
+        g.fill()
+        g.stroke()
+        g.setLineDash([])
+        g.fillStyle = C.alias
+        g.font = `600 13px ${MONO}`
+        g.fillText('ref', cellX + 7, ry + ROW / 2)
+        const refW = g.measureText('ref ').width
+        g.font = `400 14px ${MONO}`
+        g.fillStyle = v.v.k === 'n' ? C.dim : C.text
+        g.fillText(clipText(g, v.v.k === 'r' ? `참조 → ${v.v.t}` : valText(v.v), cellW - 28 - refW), cellX + 7 + refW, ry + ROW / 2)
+        if (v.to) {
+          const dotX = cellX + cellW - 8
+          g.fillStyle = C.alias
+          g.beginPath()
+          g.arc(dotX, ry + ROW / 2, 5, 0, Math.PI * 2)
+          g.fill()
+          aliases.push({ from: { x: dotX, y: ry + ROW / 2 }, to: `${v.to[0]}/${v.to[1]}` })
+        }
+      } else if (v.k === 'r') {
         // 참조: 칸 오른쪽 끝의 점에서 화살표가 나간다 (다른 칸 위를 지나지 않게)
         const dotX = cellX + cellW - 8
         g.strokeStyle = C.valueEdge
@@ -334,9 +368,30 @@ export function drawMemory(g: CanvasRenderingContext2D, r: Rect, step: TraceStep
       g.font = `400 13px ${SANS}`
       g.fillText('아직 기록한 변수가 없다', stackX + 12, sy + HEAD + ROW / 2)
     }
-    drawRows(f.vars, stackX, sy + HEAD, stackW, f.name, 130)
+    // 정적 영역 이름은 '형식.필드' 라 길다. 이름 칸을 넓혀 잘리지 않게 한다
+    drawRows(f.vars, stackX, sy + HEAD, stackW, f.name, f.name === 'static' ? 190 : 130, step.frames.indexOf(f))
     sy += h + 12
   }
+
+  // ref 선: 매개변수의 점에서 스택 오른쪽 바깥으로 나가 부른 쪽 변수 칸의 오른쪽 끝으로 들어간다 (선마다 조금씩 비켜 겹치지 않게)
+  g.strokeStyle = C.alias
+  g.fillStyle = C.alias
+  g.lineWidth = 2
+  aliases.forEach((a, k) => {
+    const to = slots.get(a.to)
+    if (!to) return
+    const rail = stackX + stackW + 10 + (k % 3) * 7
+    g.setLineDash([6, 4])
+    g.beginPath()
+    g.moveTo(a.from.x, a.from.y)
+    g.lineTo(rail, a.from.y)
+    g.lineTo(rail, to.y)
+    g.lineTo(to.x + 6, to.y)
+    g.stroke()
+    g.setLineDash([])
+    arrowHead(g, to.x + 2, to.y, Math.PI)
+  })
+  g.lineWidth = 1
 
   // 힙
   for (const o of step.heap) {
@@ -356,13 +411,13 @@ export function drawMemory(g: CanvasRenderingContext2D, r: Rect, step: TraceStep
     g.fillStyle = C.text
     g.font = `600 14px ${MONO}`
     g.textBaseline = 'middle'
-    const kind = { obj: '', arr: ' 배열', list: '', seq: '', dict: '', fn: ' 델리게이트' }[o.kind]
+    const kind = { obj: '', arr: ' 배열', list: '', seq: '', dict: '', fn: ' 델리게이트', box: ' (박싱된 값)' }[o.kind]
     g.fillText(clipText(g, `${o.t}${kind}`, b.w - 24), b.x + 12, b.y + HEAD / 2 + 2)
     const fields: Field[] = o.f.map(([n, v]) => [o.kind === 'arr' || o.kind === 'list' || o.kind === 'seq' ? `[${n}]` : n, v])
     drawRows(fields, b.x, b.y + HEAD, b.w, `#${o.id}`, o.kind === 'arr' || o.kind === 'list' || o.kind === 'seq' ? 60 : 130)
     let extra = fields.length
     if (o.text !== undefined) {
-      g.fillStyle = C.dim
+      g.fillStyle = o.kind === 'box' ? C.text : C.dim
       g.font = `400 14px ${MONO}`
       g.fillText(clipText(g, o.text, b.w - 24), b.x + 12, b.y + HEAD + extra * ROW + ROW / 2)
       extra++
@@ -425,12 +480,35 @@ function arrowHead(g: CanvasRenderingContext2D, x: number, y: number, angle: num
 
 /* ───────── 콘솔 ───────── */
 
+/** 글자 단위로 너비에 맞춰 접는다 (공백이 있으면 공백에서). 줄 수를 넘으면 마지막 줄을 … 로 끝낸다 */
+function wrapText(g: CanvasRenderingContext2D, text: string, max: number, maxLines: number): string[] {
+  const out: string[] = []
+  let rest = text
+  while (rest.length && out.length < maxLines) {
+    if (g.measureText(rest).width <= max) {
+      out.push(rest)
+      return out
+    }
+    let n = rest.length
+    while (n > 1 && g.measureText(rest.slice(0, n)).width > max) n--
+    const space = rest.lastIndexOf(' ', n)
+    const cut = space > n * 0.6 ? space + 1 : n
+    out.push(rest.slice(0, cut).trimEnd())
+    rest = rest.slice(cut)
+  }
+  if (rest.length && out.length) out[out.length - 1] = clipText(g, out[out.length - 1] + ' ' + rest, max)
+  return out
+}
+
 export function drawConsole(g: CanvasRenderingContext2D, r: Rect, text: string, error: string | null, ended: boolean) {
   const lines = text.split('\n')
   if (lines.at(-1) === '') lines.pop()
   if (ended) lines.push(error ? '' : '— 프로그램 끝 —')
   const lh = 22
-  const rows = Math.floor((r.h - 56) / lh) - (error ? 1 : 0)
+  // 예외 문구는 핵심(형식 이름 등)이 뒤에 있는 일이 많아 자르지 않고 최대 3줄로 접는다
+  g.font = `600 15px ${MONO}`
+  const errLines = error ? wrapText(g, `처리되지 않은 예외: ${error}`, r.w - 32, 3) : []
+  const rows = Math.max(1, Math.floor((r.h - 56) / lh) - errLines.length)
   const shown = lines.slice(Math.max(0, lines.length - rows))
   g.font = `400 15px ${MONO}`
   g.textBaseline = 'middle'
@@ -441,7 +519,7 @@ export function drawConsole(g: CanvasRenderingContext2D, r: Rect, text: string, 
   if (error) {
     g.fillStyle = C.bug
     g.font = `600 15px ${MONO}`
-    g.fillText(clipText(g, `처리되지 않은 예외: ${error}`, r.w - 32), r.x + 16, r.y + 44 + shown.length * lh + lh / 2)
+    errLines.forEach((line, i) => g.fillText(line, r.x + 16, r.y + 44 + (shown.length + i) * lh + lh / 2))
   }
   if (!lines.length && !error) {
     g.fillStyle = C.faint

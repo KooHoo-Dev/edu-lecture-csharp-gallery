@@ -9,12 +9,14 @@ import type { BaseMeta, BaseSpecimen, ParamDef, ParamValues, StageEvent } from '
  * 이 파일은 Node 도 직접 읽는다 (기록 만들기, 도메인 검사). 타입만 import 하고 런타임 import 는 상대 경로 .ts 만 쓴다.
  * ────────────────────────────────────────────────────────────── */
 
-/** 값 하나. n = null, v = 값 타입·문자열(글자로), s = 사용자 구조체(필드), r = 힙 객체 참조 */
+/** 값 하나. n = null, v = 값 타입·문자열(글자로), s = 사용자 구조체(필드), r = 힙 객체 참조,
+ *  ref = ref · in 매개변수 (v 는 지금 값, to 는 부른 쪽 변수의 자리 [step.frames 의 번호, 변수 이름]. 모르면 없다) */
 export type Val =
   | { k: 'n' }
   | { k: 'v'; t: string; v: string }
   | { k: 's'; t: string; f: Field[] }
   | { k: 'r'; t: string; id: number }
+  | { k: 'ref'; v: Val; to?: [number, string] }
 
 /** [이름, 값]. 배열 칸은 이름이 '0', '1' … , 딕셔너리는 키 */
 export type Field = [string, Val]
@@ -23,9 +25,10 @@ export interface HeapObj {
   /** 객체 번호. 처음 본 순서로 한 번 주고 프로그램 끝까지 같다 (같은 객체 = 같은 번호) */
   id: number
   t: string
-  kind: 'obj' | 'arr' | 'list' | 'seq' | 'dict' | 'fn'
+  /** box = 박싱된 값 타입 (object · 인터페이스 자리에 든 int 등. 값은 text, 구조체면 f) */
+  kind: 'obj' | 'arr' | 'list' | 'seq' | 'dict' | 'fn' | 'box'
   f: Field[]
-  /** 속을 그리지 않는 객체의 글 (StringBuilder 내용, 델리게이트 메서드 이름) */
+  /** 속을 그리지 않는 객체의 글 (StringBuilder 내용, 델리게이트 메서드 이름, 박싱된 값) */
   text?: string
   /** 배열이 길어 그리지 않은 칸 수 */
   more?: number

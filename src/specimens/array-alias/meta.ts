@@ -6,7 +6,7 @@ export const meta: CsMeta = {
   title: '배열 대입은 주소 복사',
   titleEn: 'Arrays Are References',
   group: 'A',
-  order: 1,
+  order: 8,
   concept: '배열은 참조 타입',
   oneLiner: '`copy = original` 도, 메서드에 배열을 넘기는 것도 본체를 복사하지 않는다. 두 변수가 배열 하나를 함께 가리킨다',
   goals: [
