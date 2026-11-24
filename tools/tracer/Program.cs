@@ -7,6 +7,10 @@
 //   3. C# 9 로 컴파일해 메모리에서 실행하고 런타임(Runtime.cs)이 모은 기록을 받는다
 // 한계: 선언할 때 초기화하지 않은 지역 변수, 속성 접근자·람다 안 문장, out 매개변수는 기록하지 않는다 (docs/specimen-guide.md).
 // ref · in 매개변수는 부른 쪽 변수(지역 변수, 매개변수, 정적 필드)와 잇는다. 부르는 문장 앞에서 __T.RefArg 로 남기고 Enter 가 가져간다.
+// 교안처럼 최상위 문(클래스·Main 없이)으로 쓴 원본도 기록한다 (프레임 이름 Main). using System; 이 없으면 1번 줄 앞에 붙여 컴파일한다 (줄 수 그대로).
+// 선언만 하고 값이 확실히 정해지지 않은 지역 변수는 '값 없음' (__T.U) 으로 남긴다 (Roslyn 확정 할당 분석).
+// 요청의 run.stdin 은 Console.ReadLine 이 읽는 입력이다. 읽은 줄은 콘솔 출력에 그대로 찍힌다 (사람이 친 것처럼).
+// 효과 끄기(GALLERY_MISTAKE) 실행이 컴파일되지 않으면 오류 줄과 메시지를 기록으로 남긴다 (교안의 '❌ 상황' 이 컴파일 오류인 경우).
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -16,6 +20,7 @@ using System.Runtime.Loader;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using Microsoft.CodeAnalysis;
@@ -37,7 +42,8 @@ foreach (var run in request["runs"]!.AsArray())
     string key = (string)run!["key"]!;
     bool mistake = (bool)run["mistake"]!;
     var values = run["values"]?.AsObject().ToDictionary(p => p.Key, p => (string)p.Value!) ?? new Dictionary<string, string>();
-    var (trace, error) = Tracer.Run(file, source, mistake, values);
+    string stdin = (string)run["stdin"] ?? "";
+    var (trace, error) = Tracer.Run(file, source, mistake, values, stdin);
     if (error != null)
     {
         errors.Add($"{(key == "" ? "기본" : key)}{(mistake ? " (GALLERY_MISTAKE)" : "")}: {error}");
@@ -57,8 +63,12 @@ static class Tracer
 {
     static readonly CSharpParseOptions Parse9 = new(LanguageVersion.CSharp9);
 
-    public static (JsonNode trace, string error) Run(string file, string source, bool mistake, Dictionary<string, string> values)
+    static readonly Regex UsingSystem = new(@"^\s*using\s+System\s*;", RegexOptions.Multiline);
+
+    public static (JsonNode trace, string error) Run(string file, string source, bool mistake, Dictionary<string, string> values, string stdin)
     {
+        // 교안 코드처럼 using System; 없이 쓴 원본: 1번 줄 앞에 붙인다 (줄 번호가 그대로다)
+        if (!UsingSystem.IsMatch(source)) source = "using System; " + source;
         var options = Parse9.WithPreprocessorSymbols(mistake ? new[] { "GALLERY_MISTAKE" } : Array.Empty<string>());
         var original = CSharpSyntaxTree.ParseText(source, options, file);
         var (withValues, missing) = ApplyParams(original, values);
@@ -68,7 +78,12 @@ static class Tracer
         // 원본 그대로 먼저 컴파일해 본다 (표본 자체의 오류는 원래 줄 번호로 알린다)
         var plain = Compile(new[] { tree });
         var plainErrors = plain.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
-        if (plainErrors.Count > 0) return (null, "컴파일 오류\n" + string.Join("\n", plainErrors.Take(10).Select(d => d.ToString())));
+        if (plainErrors.Count > 0)
+        {
+            // 효과 끄기가 컴파일 오류인 실수(교안의 CS0165 등)면 그 줄과 메시지를 기록으로 남긴다. 보통 실행은 오류다
+            if (mistake) return (CompileErrorTrace(plainErrors), null);
+            return (null, "컴파일 오류\n" + string.Join("\n", plainErrors.Take(10).Select(d => d.ToString())));
+        }
 
         var model = plain.GetSemanticModel(tree);
         var instrumented = new Instrument(model).Visit(tree.GetRoot());
@@ -88,7 +103,7 @@ static class Tracer
             pe.Position = 0;
             var asm = context.LoadFromStream(pe);
             var t = asm.GetType("__T")!;
-            t.GetMethod("Begin")!.Invoke(null, null);
+            t.GetMethod("Begin")!.Invoke(null, new object[] { stdin });
             var entry = asm.EntryPoint ?? throw new InvalidOperationException("Main 이 없다");
             string error = null;
             bool limit = false;
@@ -119,6 +134,17 @@ static class Tracer
         {
             context.Unload();
         }
+    }
+
+    /// 컴파일 오류 기록: 칸 하나 (끝), 오류 줄들, 메시지 (영어. 교안이 영어 메시지를 싣는다)
+    static JsonNode CompileErrorTrace(List<Diagnostic> errors)
+    {
+        int LineOf(Diagnostic d) => d.Location.GetLineSpan().StartLinePosition.Line + 1;
+        var shown = errors.Take(5).ToList();
+        string message = string.Join("\n", shown.Select(d => $"{LineOf(d)}번 줄 · {d.Id}: {d.GetMessage(CultureInfo.InvariantCulture)}"));
+        var bad = new JsonArray(shown.Select(LineOf).Distinct().Select(n => (JsonNode)n).ToArray());
+        var step = new JsonObject { ["line"] = LineOf(shown[0]), ["frames"] = new JsonArray(), ["heap"] = new JsonArray(), ["end"] = true, ["error"] = message, ["bad"] = bad };
+        return new JsonObject { ["steps"] = new JsonArray(step), ["error"] = message, ["compile"] = true };
     }
 
     static string LineAt(string text, Diagnostic d)
@@ -175,74 +201,65 @@ sealed class Instrument : CSharpSyntaxRewriter
         for (SyntaxNode p = s.Parent; p != null; p = p.Parent)
         {
             if (p is AnonymousFunctionExpressionSyntax or AccessorDeclarationSyntax) return false;
-            if (p is MethodDeclarationSyntax or ConstructorDeclarationSyntax or LocalFunctionStatementSyntax) return true;
+            if (p is MethodDeclarationSyntax or ConstructorDeclarationSyntax or LocalFunctionStatementSyntax or GlobalStatementSyntax) return true;
             if (p is MemberDeclarationSyntax) return false;
         }
         return false;
     }
 
-    /// 이 문장 앞에서 보이고 값이 확실히 정해진 이름들 (가까운 것부터)
-    List<(string code, string label, bool isRef)> Visible(StatementSyntax s)
+    /// 이 문장을 둘러싼 함수 (메서드, 생성자, 로컬 함수, 람다, 접근자, 최상위 문이면 파일)
+    static SyntaxNode EnclosingFunction(SyntaxNode n) =>
+        n.Ancestors().FirstOrDefault(a => a is BaseMethodDeclarationSyntax or LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax or AccessorDeclarationSyntax or CompilationUnitSyntax);
+
+    enum Kind { Value, Ref, Unassigned }
+
+    /// 이 문장 앞에서 보이는 이름들: this, 매개변수(out 제외), 같은 함수 안에서 앞서 선언한 지역 변수 (선언 순서).
+    /// 지역 변수는 Roslyn 확정 할당 분석으로 값이 확실히 정해졌는지 보고, 아니면 '값 없음' 으로 남긴다 (읽으면 CS0165 라 값을 넘길 수 없다)
+    List<(string code, string label, Kind kind, string type)> Visible(StatementSyntax s)
     {
-        var names = new List<(string, string, bool)>();
-        var seen = new HashSet<string>();
-        void Add(SyntaxToken id, bool isRef = false)
+        var names = new List<(string, string, Kind, string)>();
+        var func = EnclosingFunction(s);
+        ParameterListSyntax ps = func switch
         {
-            if (seen.Add(id.ValueText)) names.Add((id.Text, id.ValueText, isRef));
-        }
-        void AddDecl(VariableDeclarationSyntax decl)
+            BaseMethodDeclarationSyntax m => m.ParameterList,
+            LocalFunctionStatementSyntax lf => lf.ParameterList,
+            _ => null,
+        };
+        if (ps != null)
         {
-            if (decl == null) return;
-            foreach (var v in decl.Variables) if (v.Initializer != null) Add(v.Identifier);
-        }
-        SyntaxNode cur = s;
-        while (cur.Parent != null)
-        {
-            var parent = cur.Parent;
-            switch (parent)
+            bool isStatic = func is BaseMethodDeclarationSyntax bm ? bm.Modifiers.Any(SyntaxKind.StaticKeyword) : ((LocalFunctionStatementSyntax)func).Modifiers.Any(SyntaxKind.StaticKeyword);
+            var type = func.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault();
+            bool structCtor = func is ConstructorDeclarationSyntax && type is StructDeclarationSyntax;
+            // 로컬 함수의 this 는 바깥 메서드를 따른다
+            if (func is LocalFunctionStatementSyntax)
             {
-                case BlockSyntax b:
-                    foreach (var st in b.Statements.TakeWhile(x => x != cur).Reverse())
-                        if (st is LocalDeclarationStatementSyntax ld && !ld.IsConst) AddDecl(ld.Declaration);
-                    break;
-                case SwitchSectionSyntax sec:
-                    foreach (var st in sec.Statements.TakeWhile(x => x != cur).Reverse())
-                        if (st is LocalDeclarationStatementSyntax ld && !ld.IsConst) AddDecl(ld.Declaration);
-                    break;
-                case ForStatementSyntax f when cur == f.Statement:
-                    AddDecl(f.Declaration);
-                    break;
-                case ForEachStatementSyntax fe when cur == fe.Statement:
-                    Add(fe.Identifier);
-                    break;
-                case UsingStatementSyntax u when cur == u.Statement:
-                    AddDecl(u.Declaration);
-                    break;
-                case CatchClauseSyntax c when c.Declaration != null && c.Declaration.Identifier.ValueText != "":
-                    Add(c.Declaration.Identifier);
-                    break;
+                var outer = func.Ancestors().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
+                isStatic = isStatic || outer == null || outer.Modifiers.Any(SyntaxKind.StaticKeyword);
+                structCtor = outer is ConstructorDeclarationSyntax && type is StructDeclarationSyntax;
             }
-            if (parent is BaseMethodDeclarationSyntax or LocalFunctionStatementSyntax)
-            {
-                var ps = parent is BaseMethodDeclarationSyntax m ? m.ParameterList : ((LocalFunctionStatementSyntax)parent).ParameterList;
-                foreach (var p in ps.Parameters.Reverse())
-                    if (!p.Modifiers.Any(SyntaxKind.OutKeyword)) Add(p.Identifier, IsRefParam(p));
-                bool isStatic = parent is BaseMethodDeclarationSyntax bm ? bm.Modifiers.Any(SyntaxKind.StaticKeyword) : ((LocalFunctionStatementSyntax)parent).Modifiers.Any(SyntaxKind.StaticKeyword);
-                var type = parent.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault();
-                bool structCtor = parent is ConstructorDeclarationSyntax && type is StructDeclarationSyntax;
-                // 로컬 함수의 this 는 바깥 메서드를 따른다
-                if (parent is LocalFunctionStatementSyntax)
-                {
-                    var outer = parent.Ancestors().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
-                    isStatic = isStatic || outer == null || outer.Modifiers.Any(SyntaxKind.StaticKeyword);
-                    structCtor = outer is ConstructorDeclarationSyntax && type is StructDeclarationSyntax;
-                }
-                if (!isStatic && !structCtor && type != null) names.Add(("this", "this", false));
-                break;
-            }
-            cur = parent;
+            if (!isStatic && !structCtor && type != null) names.Add(("this", "this", Kind.Value, ""));
+            foreach (var p in ps.Parameters)
+                if (!p.Modifiers.Any(SyntaxKind.OutKeyword)) names.Add((p.Identifier.Text, p.Identifier.ValueText, IsRefParam(p) ? Kind.Ref : Kind.Value, ""));
         }
-        names.Reverse();
+
+        System.Collections.Immutable.ImmutableArray<ISymbol>? assigned = null;
+        try
+        {
+            var flow = model.AnalyzeDataFlow(s);
+            if (flow.Succeeded) assigned = flow.DefinitelyAssignedOnEntry;
+        }
+        catch (ArgumentException) { }
+        var locals = model.LookupSymbols(s.SpanStart).OfType<ILocalSymbol>()
+            .Where(l => !l.IsConst)
+            .Select(l => (l, decl: l.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax()))
+            .Where(x => x.decl != null && x.decl.SpanStart < s.SpanStart && EnclosingFunction(x.decl) == func)
+            .OrderBy(x => x.decl.SpanStart);
+        foreach (var (l, decl) in locals)
+        {
+            bool ok = assigned?.Contains(l, SymbolEqualityComparer.Default) ?? !(decl is VariableDeclaratorSyntax v && v.Initializer == null);
+            string code = SyntaxFacts.GetKeywordKind(l.Name) != SyntaxKind.None ? "@" + l.Name : l.Name;
+            names.Add((code, l.Name, ok ? Kind.Value : Kind.Unassigned, l.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)));
+        }
         return names;
     }
 
@@ -252,8 +269,10 @@ sealed class Instrument : CSharpSyntaxRewriter
     List<StatementSyntax> LineCall(StatementSyntax original)
     {
         var args = new List<ArgumentSyntax> { Argument(LiteralExpression(SyntaxKind.NumericLiteralExpression, Literal(Line(original)))) };
-        foreach (var (code, label, isRef) in Visible(original))
-            args.Add(Argument(ParseExpression($"__T.{(isRef ? "VR" : "V")}({SymbolDisplay.FormatLiteral(label, true)}, {code})")));
+        foreach (var (code, label, kind, type) in Visible(original))
+            args.Add(Argument(ParseExpression(kind == Kind.Unassigned
+                ? $"__T.U({SymbolDisplay.FormatLiteral(label, true)}, {SymbolDisplay.FormatLiteral(type, true)})"
+                : $"__T.{(kind == Kind.Ref ? "VR" : "V")}({SymbolDisplay.FormatLiteral(label, true)}, {code})")));
         var list = new List<StatementSyntax> { ExpressionStatement(InvocationExpression(ParseExpression("__T.L"), ArgumentList(SeparatedList(args)))).NormalizeWhitespace() };
         foreach (var (method, param, target) in RefArgs(original))
             list.Add(ParseStatement($"__T.RefArg({SymbolDisplay.FormatLiteral(method, true)}, {SymbolDisplay.FormatLiteral(param, true)}, {SymbolDisplay.FormatLiteral(target, true)});"));
@@ -292,6 +311,65 @@ sealed class Instrument : CSharpSyntaxRewriter
         Block(
             ParseStatement($"__T.Enter({SymbolDisplay.FormatLiteral(name, true)});"),
             TryStatement(body, default, FinallyClause(Block(Exit))));
+
+    /// 최상위 문: 첫 문장 앞에서 Main 프레임을 열고, 문장마다 기록을 끼운다 (프로그램이 끝나면 기록도 끝나므로 닫지 않는다)
+    public override SyntaxNode VisitCompilationUnit(CompilationUnitSyntax node)
+    {
+        var members = new List<MemberDeclarationSyntax>();
+        bool entered = false;
+        int afterLast = -1;
+        StatementSyntax last = null;
+        foreach (var m in node.Members)
+        {
+            if (m is GlobalStatementSyntax gs)
+            {
+                if (!entered)
+                {
+                    members.Add(GlobalStatement(ParseStatement("__T.Enter(\"Main\");")));
+                    entered = true;
+                }
+                var visited = (StatementSyntax)Visit(gs.Statement);
+                if (Traceable(gs.Statement)) foreach (var c in LineCall(gs.Statement)) members.Add(GlobalStatement(c));
+                members.Add(gs.WithStatement(visited));
+                if (gs.Statement is not LocalFunctionStatementSyntax)
+                {
+                    last = gs.Statement;
+                    afterLast = members.Count;
+                }
+            }
+            else members.Add((MemberDeclarationSyntax)Visit(m));
+        }
+        // 마지막 문장을 실행한 뒤의 변수 상태 (프로그램 끝 칸이 빈 메모리가 아니라 마지막 상태를 보이게)
+        if (last != null) members.Insert(afterLast, GlobalStatement(FinalCall(last)));
+        return node.WithMembers(List(members));
+    }
+
+    /// 최상위 문의 마지막 문장 뒤: 그때 보이는 지역 변수를 __T.Final 로 남긴다 (확정 할당은 마지막 문장을 나온 뒤 기준)
+    StatementSyntax FinalCall(StatementSyntax last)
+    {
+        System.Collections.Immutable.ImmutableArray<ISymbol>? assigned = null;
+        try
+        {
+            var flow = model.AnalyzeDataFlow(last);
+            if (flow.Succeeded) assigned = flow.DefinitelyAssignedOnExit;
+        }
+        catch (ArgumentException) { }
+        var args = new List<string>();
+        var locals = model.LookupSymbols(last.Span.End).OfType<ILocalSymbol>()
+            .Where(l => !l.IsConst)
+            .Select(l => (l, decl: l.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax()))
+            .Where(x => x.decl != null && x.decl.SpanStart < last.Span.End && EnclosingFunction(x.decl) is CompilationUnitSyntax)
+            .OrderBy(x => x.decl.SpanStart);
+        foreach (var (l, decl) in locals)
+        {
+            bool ok = assigned?.Contains(l, SymbolEqualityComparer.Default) ?? !(decl is VariableDeclaratorSyntax v && v.Initializer == null);
+            string code = SyntaxFacts.GetKeywordKind(l.Name) != SyntaxKind.None ? "@" + l.Name : l.Name;
+            args.Add(ok
+                ? $"__T.V({SymbolDisplay.FormatLiteral(l.Name, true)}, {code})"
+                : $"__T.U({SymbolDisplay.FormatLiteral(l.Name, true)}, {SymbolDisplay.FormatLiteral(l.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), true)})");
+        }
+        return ParseStatement($"__T.Final({string.Join(", ", args)});");
+    }
 
     public override SyntaxNode VisitBlock(BlockSyntax node)
     {

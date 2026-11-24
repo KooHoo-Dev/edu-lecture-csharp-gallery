@@ -94,6 +94,8 @@ export interface CodeView {
   visited: Set<number>
   /** 단계 보기에서 강조할 표시 번호 (0 이면 없음) */
   focus: number
+  /** 컴파일 오류가 난 줄 (빨갛게) */
+  bad?: Set<number>
 }
 
 const KEYWORDS = new Set(
@@ -138,7 +140,12 @@ export function drawCode(g: CanvasRenderingContext2D, r: Rect, v: CodeView) {
     const raw = v.lines[no - 1]
     const mark = v.marks.get(no)
     const text = raw.replace(/\s*\/\/ \[\d+\]\s*$/, '').replace(/\s*\/\/\s*@param\s+\w+\s*$/, '')
-    if (no === v.now) {
+    if (v.bad?.has(no)) {
+      g.fillStyle = 'rgba(255, 107, 107, 0.2)'
+      g.fillRect(r.x + 8, y, r.w - 16, lh)
+      g.fillStyle = C.bug
+      g.fillRect(r.x + 8, y, 4, lh)
+    } else if (no === v.now) {
       g.fillStyle = C.now
       g.fillRect(r.x + 8, y, r.w - 16, lh)
       g.fillStyle = C.nowEdge
@@ -162,6 +169,10 @@ export function drawCode(g: CanvasRenderingContext2D, r: Rect, v: CodeView) {
     if (no === v.now) {
       g.fillStyle = C.nowEdge
       g.fillText('▶', r.x + 58, y + lh / 2)
+    }
+    if (v.bad?.has(no)) {
+      g.fillStyle = C.bug
+      g.fillText('✕', r.x + 58, y + lh / 2)
     }
     drawCodeLine(g, text, r.x + 78, y + lh / 2, r.x + r.w - (mark ? 56 : 16), v.inactive.has(no))
     if (mark) {
@@ -201,12 +212,15 @@ export function valText(v: Val): string {
       return `→ ${v.t}`
     case 'ref':
       return `ref ${valText(v.v)}`
+    case 'x':
+      return '값 없음'
   }
 }
 
 /** 바뀐 값 찾기용 열쇠 (참조는 가리키는 객체 번호로) */
 function valKey(v: Val): string {
   if (v.k === 'ref') return `ref:${valKey(v.v)}`
+  if (v.k === 'x') return `x:${v.t}`
   return v.k === 'r' ? `#${v.id}` : valText(v)
 }
 
@@ -324,6 +338,16 @@ export function drawMemory(g: CanvasRenderingContext2D, r: Rect, step: TraceStep
         g.arc(dotX, ry + ROW / 2, 5, 0, Math.PI * 2)
         g.fill()
         arrows.push({ from: { x: dotX, y: ry + ROW / 2 }, edge: x + w, to: v.id, fromHeap: owner.startsWith('#') })
+      } else if (v.k === 'x') {
+        // 선언만 한 변수: 공간(상자)은 있지만 값이 정해지지 않았다. 점선 상자에 형식만 흐리게
+        g.strokeStyle = C.faint
+        g.setLineDash([4, 3])
+        roundRect(g, cellX, ry + 3, cellW, ROW - 6, 5)
+        g.stroke()
+        g.setLineDash([])
+        g.fillStyle = C.dim
+        g.font = `400 13px ${SANS}`
+        g.fillText(clipText(g, `값 없음 (${v.t})`, cellW - 14), cellX + 7, ry + ROW / 2)
       } else {
         // 값 타입은 상자 안에 값이 들어 있다
         g.fillStyle = C.value
@@ -332,7 +356,19 @@ export function drawMemory(g: CanvasRenderingContext2D, r: Rect, step: TraceStep
         g.fill()
         g.stroke()
         g.fillStyle = v.k === 'n' ? C.dim : C.text
-        g.fillText(clipText(g, valText(v), cellW - 14), cellX + 7, ry + ROW / 2)
+        // 스택 변수 칸은 오른쪽 끝에 자료형을 흐리게 적는다 (상자마다 형식이 다르다는 것을 보이게)
+        let typeW = 0
+        if (frameNo >= 0 && v.k === 'v') {
+          g.font = `400 12px ${MONO}`
+          typeW = g.measureText(v.t).width + 10
+          g.fillStyle = C.faint
+          g.textAlign = 'right'
+          g.fillText(v.t, cellX + cellW - 7, ry + ROW / 2)
+          g.textAlign = 'left'
+          g.font = `400 14px ${MONO}`
+          g.fillStyle = C.text
+        }
+        g.fillText(clipText(g, valText(v), cellW - 14 - typeW), cellX + 7, ry + ROW / 2)
       }
     })
   }
@@ -500,14 +536,20 @@ function wrapText(g: CanvasRenderingContext2D, text: string, max: number, maxLin
   return out
 }
 
-export function drawConsole(g: CanvasRenderingContext2D, r: Rect, text: string, error: string | null, ended: boolean) {
+/** errorTitle: 예외면 '처리되지 않은 예외', 컴파일 오류 기록이면 '컴파일 오류'. error 는 줄마다 메시지 하나 */
+export function drawConsole(g: CanvasRenderingContext2D, r: Rect, text: string, error: string | null, ended: boolean, errorTitle = '처리되지 않은 예외') {
   const lines = text.split('\n')
   if (lines.at(-1) === '') lines.pop()
   if (ended) lines.push(error ? '' : '— 프로그램 끝 —')
   const lh = 22
   // 예외 문구는 핵심(형식 이름 등)이 뒤에 있는 일이 많아 자르지 않고 최대 3줄로 접는다
   g.font = `600 15px ${MONO}`
-  const errLines = error ? wrapText(g, `처리되지 않은 예외: ${error}`, r.w - 32, 3) : []
+  const errLines = error
+    ? error
+        .split('\n')
+        .flatMap((line, i) => wrapText(g, i === 0 ? `${errorTitle}: ${line}` : line, r.w - 32, 3))
+        .slice(0, 8)
+    : []
   const rows = Math.max(1, Math.floor((r.h - 56) / lh) - errLines.length)
   const shown = lines.slice(Math.max(0, lines.length - rows))
   g.font = `400 15px ${MONO}`

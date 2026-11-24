@@ -9,13 +9,14 @@
 | 항목 | 결정 |
 |---|---|
 | 리포 | `KooHoo-Dev/edu-lecture-csharp-gallery`. 루트가 웹 앱이다 (패턴 갤러리와 같다) |
-| 표본 | 교안 개념 하나를 보여 주는 짧은 콘솔 프로그램 (C# 9). Unity 에도 그대로 들어간다 |
+| 목적 (2026-11-24) | **교안을 띄워 두고 옆에서 쓰는 보조 교안.** 교안의 목차·주제·코드 예시를 그대로 따른다 (비전공자용 흐름, 조건문·반복문이 나오는 때까지 맞춰 둔 것). Unity 는 신경 쓰지 않는다 |
+| 표본 | 교안 절(들)의 코드 블록을 거의 그대로 실행하는 최상위 문 콘솔 프로그램 (C# 9). order = 장 번호 × 10 + 장 안 순서, 칩 = 교안 장·절 |
 | 무대 | 실행 무대 하나 (`src/stage/ExecStage.tsx`): 코드(지금 줄), 메모리(스택 프레임, 정적 영역, 힙, 참조 화살표), 콘솔 |
 | 웹 = 실제 | 기록 도구(`tools/tracer`, Roslyn)가 원본을 실제로 실행한 기록을 재생한다. 웹에 C# 를 옮긴 코드가 없다 |
 | 값 조절 | 미리 기록한 입력 조합만 (select, toggle. `// @param`) |
 | 단계 | `// [n]` 줄을 처음 실행한 직후 |
-| 효과 끄기 | `#if GALLERY_MISTAKE` 를 켜고 실행한 기록 |
-| 그룹 | 교안 파트 A~E |
+| 효과 끄기 | 교안의 ❌ 상황. `#if GALLERY_MISTAKE` 를 켜고 실행한 기록. 컴파일 오류면 오류 줄과 메시지 |
+| 그룹 | 교안 파트 (지금은 A = Part 1 만) |
 | AI 세트 | 설명해 줘, 예측 문제 만들기, 내 코드 점검, Unity 로 옮기기. Skill `csharp-for-unity` |
 
 ## 2. 리포 구조
@@ -82,17 +83,26 @@ edu-lecture-csharp-gallery/
 - 만든 방법: 워크플로우로 제작 7묶음을 병렬로 돌리고, 리뷰어 2명이 기록 출력·단계 화면·효과 끄기 화면을 대조해 고쳤다. 전체 `gallery check` 통과(경고 0), Unity 컴파일 15개 통과, Skill 31개 파일.
 - 무대: 예외 문구를 자르지 않고 3줄까지 접는다 (`boxing-unboxing` 의 `System.Int32 → System.Int64` 가 보이게). 정적 영역 이름 칸을 넓혔다.
 
+### 2026-11-24 교안 목차를 따르는 보조 교안으로 다시 짬
+
+- Jay 피드백: 앞의 표본 13개는 장마다 개념을 골라 새 예시로 만들어 교안 흐름과 달랐다 (01장 표본에 for 를 쓰는 등 아직 배우지 않은 문법도 썼다). 갤러리는 교안을 띄워 두고 옆에서 메모리와 출력을 보여 주는 보조 교안이어야 하고, 교안의 목차와 주제를 그대로 따른다. 우선 01 변수, 02 자료형, 03 연산자, 04 콘솔 입출력. 나머지는 내려도 된다.
+- 내린 것: 표본 15개 전부 (`value-vs-reference`, `array-alias` 와 Part 1 표본 13개). 커밋 `c0294e0` 에 남아 있다. 준비 중 카드는 교안 05~13장으로 바꿨다.
+- 기록 도구: 최상위 문 원본 (프레임 이름 Main, `using System;` 은 1번 줄 앞에 붙여 줄 번호 유지), 선언만 한 지역 변수를 '값 없음' 으로 (`__T.U`, Roslyn `DefinitelyAssignedOnEntry`), 보이는 지역 변수를 문법 대신 의미 분석(`LookupSymbols`)으로 구한다, `Console.ReadLine` 입력 (`run.stdin`, 읽은 줄을 콘솔에 찍는다), 효과 끄기 실행이 컴파일 오류면 오류 기록 (`compile: true`, 오류 줄 `bad`).
+- 무대: 값 없음 점선 상자, 컴파일 오류 줄 빨간 표시와 메시지, 메모리 칸 안내. 입력값 key `stdin` (값의 `|` 가 줄바꿈). `CONSOLE_UNITY` 공통 Unity 글. 도메인 검사: 최상위 문 원본 허용, `Console.ReadLine` 은 `stdin` 입력값이 있을 때만.
+- 새 기준 샘플 `variable-four-stages` (01장 3.1~3.3 · 4.2 · 4.3): 교안 4.2 코드를 줄 번호까지 그대로, 교안의 강조 줄(2·5·9·13)이 네 단계, 4.3 ❌ 가 효과 끄기 (CS0165 컴파일 오류 화면).
+- 리뷰 요청으로 더한 것: 메모리의 스택 변수 칸 오른쪽에 자료형(int, float, decimal …)을 흐리게 적는다 (02장의 핵심). 프로그램 끝 칸에도 마지막 변수 상태를 남긴다 (최상위 문은 마지막 문장 뒤 상태 `__T.Final`, 그 밖은 마지막 칸 상태).
+- 제작: 워크플로우로 제작 6묶음 + 리뷰어 2명. 전체 `gallery check` 통과, 경고 2개 (`console-tryparse` 는 교안 4.3 ✅ 가 네 문장이라 5칸뿐이라 이벤트 검사가 경고한다).
+- Jay 확인 거리: (1) `datatype-value-vs-reference` 는 교안 3.3·3.4·4.2 에 ❌ 가 없어 효과 끄기(`int[] arrC = arrA;`)를 3.4 설명을 바탕으로 만들어 넣었다. (2) 교안 블록이 코드로 시작하는 표본은 첫 줄 주석 규칙 때문에 줄 번호가 교안보다 하나 밀린다. (3) 교안 수정 거리: 03장 3.4 출력 주석 `true` (콘솔은 `True`), 03장 5절 '100.0 인 것에 주의' 주석 (핵심은 `(double)`), '괄호로 묶이는 단위를 드러낸다' 아래 줄에 괄호 없음, 02장 5절 할인율 출력은 `15.00%`, 02장 3.1·4.1·4.3 블록이 같은 이름(level, pi, speed, grade)을 다시 선언해 한 파일에 잇지 못한다.
+- 01~04장 표본 목록 (교안 목차 순서): 11 `variable-four-stages`, 12 `variable-game-character`, 21 `datatype-basic-types`, 22 `datatype-value-vs-reference`, 23 `datatype-shop-detail`, 31 `operator-arithmetic-assign`, 32 `operator-compare-logic`, 33 `operator-increment-ternary`, 34 `operator-before-after`, 35 `operator-skill-check`, 41 `console-read-parse`, 42 `console-tryparse`, 43 `console-normalize`, 44 `console-guard-character`.
+
 ## 5. 남은 일
 
 1. GitHub Settings > Pages > Source 를 GitHub Actions 로 (Jay). 리포 생성과 첫 push 는 2026-11-23 에 했다.
-2. 예측 질문 (`steps[].ask`): 그 줄에서 멈추고 보기를 고르게 한 뒤 진행. 설계 4-3절. 무대와 meta 형식.
-3. 기준 샘플 2개(`value-vs-reference`, `array-alias`) 독립 리뷰. 그 뒤 워커 묶음으로.
-4. 기록 도구: 문자열을 힙 객체로 그리는 선택(`string-immutable`). 박싱 상자와 ref 화살표는 2026-11-24 에 했다.
-5. (해결 2026-11-24) 힙 객체 번호를 실제 객체 정체성으로 고정했다.
-6. JayDispatch 잡 틀 (`jobs/`, `tools/workflow/`): 패턴 갤러리 것을 가져와 writePaths(`samples/<id>/`, `src/specimens/<id>/`, `truth/<id>/`, `src/shots/<id>/`), verify(`npm run trace -- <id> --no-build`, `check <id>`, `unity-compile <id>`) 로 바꾼다.
-7. 기록 도구: `else if` 조건, `for`·`while` 조건 검사를 칸으로 남기기 (조건식 값 true/false 표시도). 지금은 `if-chain-order` 가 갈래를 한 줄로 써서 피해 갔다.
-8. 무대: 힙이 한 열이라 객체 5~6개를 넘으면 접힌다 (`static-shared-counter` 의 4개 프리셋, `jagged-array`). 두 열 배치나 넘칠 때 줄 높이 줄이기. heap-reachability, List 계열 전에 필요하다.
-9. 단계 표시: 핵심 줄이 `#if GALLERY_MISTAKE` 구역 안에 있으면 다음 공통 줄에 둘 수밖에 없어 한 칸 뒤 화면이 된다 (`variable-reassign`, `float-precision`). '구역 직후' 표시 방법을 검토.
-10. 도메인 검사: namespace 를 id 의 단어 첫 글자만 대문자로 보므로 `tryparse-guard` 는 `CSharpGallery.TryparseGuard` 다 (대소문자 무시 비교 검토). `Console.ReadLine` 금지 검사가 주석에도 걸린다.
-11. 썸네일 시각을 표본마다 정하는 칸 (`pass-by-value-ref` 처럼 핵심 그림이 늦게 나오는 표본).
-12. 교안 수정 (krKooHoo.github.io): `02_datatype.md` 99~100줄의 `Console.WriteLine(1234567.8f) // 1234568` 은 .NET Core 3.0 이후 `1234567.8` 이다 (`float-precision` 리뷰에서 발견).
+2. 교안 05장부터 같은 방식으로 (Jay 가 순서를 정한다). 05장 전에 기록 도구가 `else if` 조건, `for` · `while` 조건 검사를 칸으로 남겨야 조건문·반복문의 흐름이 보인다 (조건식 값 true/false 표시도).
+3. 예측 질문 (`steps[].ask`): 그 줄에서 멈추고 보기를 고르게 한 뒤 진행. 설계 4-3절.
+4. 기록 도구: 문자열을 힙 객체로 그리는 선택 (교안이 문자열 불변을 다룰 때).
+5. 무대: 힙이 한 열이라 객체 5~6개를 넘으면 접힌다. 08장 배열 전에 두 열 배치나 줄 높이 줄이기.
+6. 단계 표시: 핵심 줄이 `#if GALLERY_MISTAKE` 구역 안에 있으면 다음 공통 줄에 둘 수밖에 없다. '구역 직후' 표시 방법을 검토.
+7. 썸네일 시각을 표본마다 정하는 칸.
+8. JayDispatch 잡 틀 (`jobs/`, `tools/workflow/`): writePaths(`samples/<id>/`, `src/specimens/<id>/`, `truth/<id>/`, `src/shots/<id>/`), verify(`npm run trace -- <id> --no-build`, `check <id>`).
+9. (해결 2026-11-24) 교안 `02_datatype.md` 의 float 출력 주석을 고쳤다 (krKooHoo.github.io `882b997`).

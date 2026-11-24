@@ -18,10 +18,13 @@ export const sampleFiles = (root, id) =>
         .sort()
     : []
 
-/** 기록하는 원본: static void Main 이 있는 파일 (하나여야 한다) */
+/** 기록하는 원본: static void Main 이 있는 파일 (하나여야 한다). 최상위 문 원본은 폴더의 유일한 .cs */
 export function mainFile(root, id) {
-  const mains = sampleFiles(root, id).filter(n => /\bstatic\s+(void|int)\s+Main\s*\(/.test(read(join(sampleDir(root, id), n))))
-  return mains.length === 1 ? mains[0] : null
+  const files = sampleFiles(root, id)
+  const mains = files.filter(n => /\bstatic\s+(void|int)\s+Main\s*\(/.test(read(join(sampleDir(root, id), n))))
+  if (mains.length === 1) return mains[0]
+  // 교안처럼 최상위 문으로 쓴 원본 (Main 없이): 폴더에 .cs 가 하나면 그것
+  return mains.length === 0 && files.length === 1 ? files[0] : null
 }
 
 export const read = path => readFileSync(path, 'utf8').replace(/\r\n/g, '\n')

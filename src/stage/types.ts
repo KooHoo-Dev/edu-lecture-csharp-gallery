@@ -9,7 +9,7 @@ import type { BaseMeta, BaseSpecimen, ParamDef, ParamValues, StageEvent } from '
  * 이 파일은 Node 도 직접 읽는다 (기록 만들기, 도메인 검사). 타입만 import 하고 런타임 import 는 상대 경로 .ts 만 쓴다.
  * ────────────────────────────────────────────────────────────── */
 
-/** 값 하나. n = null, v = 값 타입·문자열(글자로), s = 사용자 구조체(필드), r = 힙 객체 참조,
+/** 값 하나. n = null, v = 값 타입·문자열(글자로), s = 사용자 구조체(필드), r = 힙 객체 참조, x = 값 없음(선언만 함),
  *  ref = ref · in 매개변수 (v 는 지금 값, to 는 부른 쪽 변수의 자리 [step.frames 의 번호, 변수 이름]. 모르면 없다) */
 export type Val =
   | { k: 'n' }
@@ -17,6 +17,8 @@ export type Val =
   | { k: 's'; t: string; f: Field[] }
   | { k: 'r'; t: string; id: number }
   | { k: 'ref'; v: Val; to?: [number, string] }
+  /** 선언만 하고 값이 확실히 정해지지 않은 지역 변수 (t 는 형식 이름). 읽으면 CS0165 다 */
+  | { k: 'x'; t: string }
 
 /** [이름, 값]. 배열 칸은 이름이 '0', '1' … , 딕셔너리는 키 */
 export type Field = [string, Val]
@@ -50,13 +52,17 @@ export interface TraceStep {
   heap: HeapObj[]
   /** 마지막 칸 (프로그램 끝) */
   end?: boolean
-  /** 잡히지 않은 예외 */
+  /** 잡히지 않은 예외. 컴파일 오류 기록이면 오류 메시지들 (줄마다 하나) */
   error?: string
+  /** 컴파일 오류가 난 줄 (컴파일 오류 기록에만) */
+  bad?: number[]
 }
 
 export interface Run {
   steps: TraceStep[]
   error?: string
+  /** 컴파일되지 않아 실행하지 못한 기록 (효과 끄기가 컴파일 오류형 실수일 때). 칸은 오류 칸 하나다 */
+  compile?: boolean
 }
 
 export interface TraceFile {
@@ -111,6 +117,22 @@ export function allCombos(params: ParamDef[]): ParamValues[] {
     out = out.flatMap(v => options.map(o => ({ ...v, [p.key]: o })))
   }
   return out
+}
+
+/** 입력값 key 가 이것이면 코드의 초기값이 아니라 Console.ReadLine 이 읽는 입력이다. 값의 | 가 줄바꿈 ('홍길동|2000') */
+export const STDIN = 'stdin'
+
+/** 콘솔 표본의 공통 'Unity 에서' 글. 이 갤러리는 교안을 띄워 두고 옆에서 보는 보조 교안이라 표본마다 Unity 글을 따로 쓰지 않는다 */
+export const CONSOLE_UNITY: CsMeta['unity'] = {
+  setup: [
+    '이 표본은 교안과 같은 콘솔 프로그램(최상위 문)이다. `dotnet new console` 로 프로젝트를 만들고 Program.cs 에 원본을 붙여 넣는다.',
+    '`dotnet run` 으로 실행해 콘솔 출력을 무대의 콘솔 칸과 비교한다. 입력값이 있으면 무대에서 고른 입력을 그대로 친다.',
+  ],
+  verify: '콘솔 출력이 무대의 콘솔 칸과 같다.',
+  pitfalls: [
+    'Unity 에서는 `Console.WriteLine` 대신 `Debug.Log` 로 찍는다. `Console.ReadLine` 은 Unity 에서 입력을 받지 못한다.',
+    '최상위 문(클래스와 Main 없이 쓰는 코드)은 Unity 스크립트에 그대로 넣을 수 없다. MonoBehaviour 의 `Start()` 안으로 옮긴다.',
+  ],
 }
 
 /** 입력 조합 수 상한 (표본당, 용량). 넘으면 params 를 줄인다 */

@@ -28,7 +28,7 @@ export const config = defineGallery<CsSpecimen>({
   brand: { title: 'C# GALLERY', tagline: 'C# 기초 · 실제 실행 기록 · 스택과 힙' },
   storageKey: 'jaytools.csharpgallery.v1.',
   downloadName: 'CSharpGallery.html',
-  envLabel: 'C# 9 · Unity 6.3 LTS',
+  envLabel: 'C# 9 · .NET 콘솔',
   footer: '모든 코드와 글은 학습용으로 새로 작성했습니다. 원본 교안은 krkoohoo.github.io 의 C# 기초입니다.',
   hero: {
     eyebrow: '유니티 개발자 양성과정 · C# 기초',
@@ -37,7 +37,7 @@ export const config = defineGallery<CsSpecimen>({
         한 줄씩 <em>실행</em>하며 메모리를 <em>본다</em>
       </>
     ),
-    lead: '표본마다 짧은 C# 프로그램을 실제로 실행한 기록을 한 줄씩 재생합니다. 스택의 변수 상자와 힙의 객체, 둘을 잇는 참조 화살표가 줄마다 어떻게 바뀌는지 보고, 효과 끄기로 흔한 실수를 넣은 실행과 비교합니다.',
+    lead: '교안을 띄워 두고 옆에서 보는 보조 교안입니다. 교안의 장과 절 순서대로, 교안의 코드 예시를 실제로 실행한 기록을 한 줄씩 재생합니다. 변수 상자와 콘솔 출력이 줄마다 어떻게 바뀌는지 보고, 효과 끄기로 교안의 ❌ 상황(흔한 실수)을 넣은 실행과 비교합니다.',
   },
   searchPlaceholder: '검색: 참조, 구조체, 배열, static…',
   groups: GROUPS,
@@ -72,17 +72,17 @@ export const config = defineGallery<CsSpecimen>({
     intro: (
       <>
         <p>
-          유니티 개발자 양성과정의 강사와 수강생이 함께 보는 C# 기초 갤러리입니다. 교안(C# 기초)의 개념 중 <b>눈에 보이지 않는 메모리</b>가 핵심인 것을 골라, 짧은 프로그램이 실행될 때 스택과 힙이 어떻게 바뀌는지 한 줄씩 보여 줍니다.
+          유니티 개발자 양성과정의 C# 기초 수업에서 <b>교안 옆에 띄워 두는 보조 교안</b>입니다. 교안(C# 기초)의 장과 절 순서를 그대로 따르고, 교안의 코드 예시를 거의 그대로 실행해 <b>눈에 보이지 않는 메모리와 출력</b>을 한 줄씩 보여 줍니다. 표본마다 이름 옆 칩이 교안의 장과 절을 가리킵니다.
         </p>
         <p>
-          무대의 그림은 손으로 그린 것이 아닙니다. 표본의 C# 코드를 C# 9 로 컴파일해 <b>실제로 실행하면서 줄마다 변수와 객체를 읽은 기록</b>을 재생합니다. 같은 코드를 Unity 에 넣어도 같은 결과가 나옵니다.
+          무대의 그림은 손으로 그린 것이 아닙니다. 표본의 C# 코드를 C# 9 로 컴파일해 <b>실제로 실행하면서 줄마다 변수와 객체를 읽은 기록</b>을 재생합니다. 콘솔 입력(<code>Console.ReadLine</code>)은 무대에서 고른 입력을 친 것으로 실행하고, 교안의 ❌ 상황이 컴파일 오류면 효과 끄기 화면이 그 줄과 오류 메시지를 보여 줍니다.
         </p>
       </>
     ),
     principles: [
-      '코드와 글은 교안을 바탕으로 학습용으로 새로 씁니다. 공식 문서는 링크합니다.',
+      '교안의 목차와 코드 예시를 따릅니다. 아직 배우지 않은 문법(그 장보다 뒤에 나오는 것)은 쓰지 않습니다.',
       '표본 프로그램은 수업 화면에서 한눈에 들어오도록 짧게 씁니다.',
-      '효과 끄기는 수강생이 실제로 하는 실수를 재현한 실행입니다.',
+      '효과 끄기는 교안의 ❌ 상황과 주의사항에 나온 실수를 재현한 실행입니다.',
     ],
     noticeEn: 'All code and text in this gallery are original work written for education, based on the instructor’s own C# lecture notes.',
     students: (

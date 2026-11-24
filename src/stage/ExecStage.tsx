@@ -165,17 +165,26 @@ export function ExecStage({ ref, specimen, values, step, off, playing, speed, au
     const prev = i > 0 ? r.steps[i - 1] : null
     const visited = new Set(r.steps.slice(0, i).map(x => x.line))
     const ended = !!cur.end
-    const title = off ? `${fileName} · 나쁜 예 (GALLERY_MISTAKE)` : fileName
-    panel(g, CODE, title, ended ? `끝 · ${r.steps.length - 1}칸` : `${i + 1} / ${r.steps.length - 1}칸 · ${cur.line}번 줄 실행 직전`, off ? C.bug : C.dim)
-    drawCode(g, CODE, { file: fileName, lines, marks, inactive, now: ended ? 0 : cur.line, prev: prev?.line ?? 0, visited, focus: live.current.step })
+    const title = off ? `${fileName} · 나쁜 예 (${r.compile ? '컴파일 오류' : 'GALLERY_MISTAKE'})` : fileName
+    const note = r.compile ? '컴파일되지 않아 실행하지 못했다' : ended ? `끝 · ${r.steps.length - 1}칸` : `${i + 1} / ${r.steps.length - 1}칸 · ${cur.line}번 줄 실행 직전`
+    panel(g, CODE, title, note, off ? C.bug : C.dim)
+    drawCode(g, CODE, { file: fileName, lines, marks, inactive, now: ended ? 0 : cur.line, prev: prev?.line ?? 0, visited, focus: live.current.step, bad: new Set(cur.bad ?? []) })
     panel(g, MEM, '메모리')
-    drawMemory(g, MEM, cur, prev)
+    if (r.compile) {
+      // 컴파일 오류: 프로그램이 한 줄도 돌지 않아 메모리에 아무것도 만들어지지 않는다
+      g.fillStyle = C.dim
+      g.font = '500 16px "Chakra Petch", "Malgun Gothic", sans-serif'
+      g.textBaseline = 'top'
+      g.textAlign = 'left'
+      g.fillText('컴파일 오류가 있으면 프로그램이 한 줄도 실행되지 않는다.', MEM.x + 24, MEM.y + 60)
+      g.fillText('빨간 줄을 고쳐야 변수 상자가 만들어진다.', MEM.x + 24, MEM.y + 88)
+    } else drawMemory(g, MEM, cur, prev)
     const out = r.steps
       .slice(0, i + 1)
       .map(x => x.out ?? '')
       .join('')
     panel(g, OUT, '콘솔 출력')
-    drawConsole(g, OUT, out, ended ? (cur.error ?? null) : null, ended)
+    drawConsole(g, OUT, out, ended ? (cur.error ?? null) : null, ended, r.compile ? '컴파일 오류' : '처리되지 않은 예외')
   }
 
   return (

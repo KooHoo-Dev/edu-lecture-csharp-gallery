@@ -3,6 +3,7 @@
 //   npm run trace -- <id> ...     지정한 표본
 //   npm run trace -- <id> --no-build   기록 도구를 다시 빌드하지 않는다 (동시에 여러 표본을 기록할 때)
 // 입력 조합(meta.params 의 select 값 × toggle)마다 보통 실행, 원본에 #if GALLERY_MISTAKE 가 있으면 그것을 켠 실행도 남긴다.
+// 입력값 key 'stdin' 은 Console.ReadLine 이 읽는 입력이다 (값의 | 가 줄바꿈). 효과 끄기 실행이 컴파일되지 않으면 오류 줄과 메시지를 남긴다.
 // .NET SDK 10 이 있어야 한다. CI 는 커밋된 기록으로 검사하므로 dotnet 이 필요 없다.
 
 import { spawnSync } from 'node:child_process'
@@ -29,7 +30,7 @@ else {
   if (build.status !== 0) fail(`기록 도구 빌드 실패\n${build.stdout}\n${build.stderr}`)
 }
 
-const { allCombos, runKey, MAX_COMBOS } = await loadTypes(ROOT)
+const { allCombos, runKey, MAX_COMBOS, STDIN } = await loadTypes(ROOT)
 let failed = false
 for (const id of ids.length ? ids : all) {
   const meta = await loadMeta(ROOT, id)
@@ -55,8 +56,10 @@ for (const id of ids.length ? ids : all) {
   const hasMistake = /#if\s+GALLERY_MISTAKE\b/.test(source)
   const runs = combos.flatMap(values => {
     const key = runKey(meta.params, values)
-    const v = Object.fromEntries(Object.entries(values).map(([k, x]) => [k, String(x)]))
-    return [{ key, mistake: false, values: v }, ...(hasMistake ? [{ key, mistake: true, values: v }] : [])]
+    // 입력값 stdin 은 코드가 아니라 Console.ReadLine 이 읽는 입력이다 (| 로 줄을 나눈다)
+    const v = Object.fromEntries(Object.entries(values).filter(([k]) => k !== STDIN).map(([k, x]) => [k, String(x)]))
+    const stdin = values[STDIN] === undefined ? '' : String(values[STDIN]).split('|').join('\n')
+    return [{ key, mistake: false, values: v, stdin }, ...(hasMistake ? [{ key, mistake: true, values: v, stdin }] : [])]
   })
   const res = spawnSync('dotnet', [dll], { input: JSON.stringify({ file: `samples/${id}/${file}`, source, runs }), encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
   let out

@@ -1,7 +1,8 @@
 # C# 기초 갤러리 표본 선정
 
 - 작성: 2026-11-23. 근거: 교안 `krKooHoo/krKooHoo.github.io` 의 `docs/01-csharp-basic` (마크다운 56개: 개념 장 40, part6 과제 9, index 7) 를 읽고 정리했다.
-- 상태: 초안. 순서와 범위는 Jay 확인 전이다.
+- **상태: 폐기 (2026-11-24).** Jay 결정으로 갤러리는 교안 목차를 그대로 따르는 보조 교안이 되었다 (specimen-guide 0절, plan.md 4절). 이 문서처럼 개념을 골라 새 예시로 만드는 방식은 쓰지 않는다. 아래는 기록으로만 남긴다. 교안 근거·뺀 후보(5절)는 05장 이후 작업에서 참고할 수 있다.
+- 상태(옛): 초안. 순서와 범위는 Jay 확인 전이다.
 - 2026-11-24: 교안 Part 1(그룹 A) 모든 장에 표본을 만들었다. 위 카드의 A 묶음 4개에 더해 장마다 하나씩 `variable-reassign`, `float-precision`, `integer-division`, `tryparse-guard`, `if-chain-order`, `loop-accumulator`, `break-one-level`, `jagged-array`, `return-value` (plan.md 4절). 7절의 연산·조건·반복 쟁점은 "실행 결과가 갈리는 실수가 있는 개념만" 으로 넣었다.
 
 ## 0. 요약

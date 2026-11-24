@@ -18,7 +18,24 @@ public readonly struct __Var
     public readonly bool Boxed;
     /// ref · in 매개변수 (부른 쪽 변수를 가리킨다)
     public readonly bool IsRef;
-    public __Var(string name, object value, bool boxed, bool isRef) { Name = name; Value = value; Boxed = boxed; IsRef = isRef; }
+    /// 선언만 하고 값이 확실히 정해지지 않은 지역 변수. Value 는 형식 이름이다
+    public readonly bool Unassigned;
+    public __Var(string name, object value, bool boxed, bool isRef, bool unassigned = false) { Name = name; Value = value; Boxed = boxed; IsRef = isRef; Unassigned = unassigned; }
+}
+
+/// Console.ReadLine 이 읽는 입력. 읽은 줄을 콘솔 출력에 그대로 찍는다 (사람이 친 글자가 화면에 남는 것처럼)
+public sealed class __EchoReader : TextReader
+{
+    readonly StringReader inner;
+    public __EchoReader(string text) { inner = new StringReader(text); }
+    public override int Peek() => inner.Peek();
+    public override int Read() => inner.Read();
+    public override string ReadLine()
+    {
+        string line = inner.ReadLine();
+        if (line != null) Console.Out.Write(line + "\n");
+        return line;
+    }
 }
 
 public sealed class __GalleryTraceLimit : Exception
@@ -47,12 +64,15 @@ public static class __T
     static StringWriter output;
     static int outputPos;
 
-    public static void Begin()
+    public static void Begin(string stdin)
     {
         output = new StringWriter { NewLine = "\n" };
         Console.SetOut(output);
-        Console.SetIn(new StringReader(""));
+        Console.SetIn(new __EchoReader(stdin ?? ""));
     }
+
+    /// 선언만 하고 값이 확실히 정해지지 않은 지역 변수 (읽을 수 없으니 형식 이름만 넘긴다)
+    public static __Var U(string name, string type) => new __Var(name, type, false, false, true);
 
     public static __Var V<T>(string name, T value) => new __Var(name, value, IsBoxed(typeof(T), value), false);
 
@@ -111,6 +131,14 @@ public static class __T
             end["heap"] = last["heap"];
             end["error"] = error;
         }
+        else if (finalState != null || steps.Count > 0)
+        {
+            // 정상으로 끝나도 마지막 변수 상태를 남겨 둔다 (수업에서 최종 값을 메모리로 보이게).
+            // 최상위 문은 마지막 문장 뒤 상태(Final), 그 밖(return 으로 일찍 끝남, Main 메서드)은 마지막 칸의 상태
+            var last = finalState ?? steps[steps.Count - 1];
+            end["frames"] = last["frames"];
+            end["heap"] = last["heap"];
+        }
         else
         {
             end["frames"] = new object[0];
@@ -149,7 +177,16 @@ public static class __T
         public readonly List<object> Heap = new List<object>();
     }
 
-    static Dictionary<string, object> Snap(int line)
+    static Dictionary<string, object> finalState;
+
+    /// 최상위 문의 마지막 문장 뒤 변수 상태. 프로그램 끝 칸이 이것을 보인다 (출력은 끝 칸이 가져간다)
+    public static void Final(params __Var[] vars)
+    {
+        if (frames.Count > 0) frames[frames.Count - 1].Vars = vars;
+        finalState = Snap(0, false);
+    }
+
+    static Dictionary<string, object> Snap(int line, bool takeOutput = true)
     {
         var s = new Snapshot();
         var frameList = new List<object>();
@@ -162,7 +199,9 @@ public static class __T
             var vars = new List<object[]>();
             foreach (var v in f.Vars)
             {
-                object val = Value(v.Value, s, 0, v.Boxed);
+                object val = v.Unassigned
+                    ? new Dictionary<string, object> { ["k"] = "x", ["t"] = (string)v.Value }
+                    : Value(v.Value, s, 0, v.Boxed);
                 if (v.IsRef)
                 {
                     // ref 매개변수: 값과 함께 부른 쪽 변수의 자리(무대의 프레임 번호, 이름)를 남긴다
@@ -192,7 +231,7 @@ public static class __T
             }
         Drain(s);
         var step = new Dictionary<string, object> { ["line"] = line, ["frames"] = frameList, ["heap"] = s.Heap };
-        string delta = TakeOutput();
+        string delta = takeOutput ? TakeOutput() : "";
         if (delta.Length > 0) step["out"] = delta;
         return step;
     }
