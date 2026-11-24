@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 
@@ -96,6 +97,14 @@ public static class __T
     }
 
     // ───────── 한 칸 ─────────
+
+    // 객체 번호는 처음 본 순서로 한 번 주고 끝까지 같다 (칸이 바뀌어도 같은 객체 = 같은 번호. 무대의 바뀐 값 표시와 비유 장면의 움직임이 쓴다).
+    // 약한 표라 기록이 객체의 수명을 늘리지 않는다
+    sealed class IdBox { public int Id; }
+    static readonly ConditionalWeakTable<object, IdBox> ids = new ConditionalWeakTable<object, IdBox>();
+    static int nextId;
+
+    static int IdOf(object v) => ids.GetValue(v, _ => new IdBox { Id = ++nextId }).Id;
 
     sealed class Snapshot
     {
@@ -196,7 +205,7 @@ public static class __T
         }
         if (!s.Ids.TryGetValue(v, out int id))
         {
-            id = s.Ids.Count + 1;
+            id = IdOf(v);
             s.Ids[v] = id;
             s.Pending.Enqueue(v);
         }

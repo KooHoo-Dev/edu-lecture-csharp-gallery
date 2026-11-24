@@ -33,7 +33,6 @@ export const SPECIMENS: CsSpecimen[] = sortSpecimens(
 
 /* 아직 구현되지 않은 표본. 구현되면 자동으로 목록에서 빠진다. 근거와 순서는 docs/selection.md */
 export const PLANNED: PlannedSpecimen[] = [
-  { id: 'array-alias', title: '배열 대입은 주소 복사', group: 'A', order: 1, oneLiner: 'copy = original 은 배열을 복사하지 않는다. 두 변수가 배열 하나를 함께 가리킨다' },
   { id: 'pass-by-value-ref', title: '값 전달과 ref', group: 'A', order: 2, oneLiner: '매개변수는 사본이다. ref 를 붙이면 호출한 쪽 변수를 직접 고친다' },
   { id: 'ref-param-reassign', title: '매개변수에 new 를 넣으면', group: 'A', order: 3, oneLiner: '받은 객체의 필드를 고치면 원본이 바뀌지만, 매개변수에 새 객체를 넣으면 연결만 끊긴다' },
   { id: 'static-shared-counter', title: 'static 은 하나뿐', group: 'A', order: 4, oneLiner: '정적 필드는 객체마다가 아니라 클래스에 하나 있어, 모든 객체가 같은 칸을 센다' },

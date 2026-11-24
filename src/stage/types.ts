@@ -20,7 +20,7 @@ export type Val =
 export type Field = [string, Val]
 
 export interface HeapObj {
-  /** 한 칸 안에서만 같은 객체를 가리키는 번호 (변수에서 닿는 순서) */
+  /** 객체 번호. 처음 본 순서로 한 번 주고 프로그램 끝까지 같다 (같은 객체 = 같은 번호) */
   id: number
   t: string
   kind: 'obj' | 'arr' | 'list' | 'seq' | 'dict' | 'fn'

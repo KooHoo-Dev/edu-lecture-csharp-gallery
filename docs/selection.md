@@ -20,7 +20,7 @@
 | id | 제목 | 그룹 | 근거 장 | 무대에서 보일 것 | 효과 끄기 | 예측 질문 후보 |
 |---|---|---|---|---|---|---|
 | `value-vs-reference` ✅ | 복사인가 공유인가 | B | P2-05 §4.2, P2-02 | p1·p2 상자가 따로, player1·player2 화살표가 객체 하나로 | Point 를 class 로 | `p2.X=100` 뒤 p1.X? |
-| `array-alias` | 배열 대입은 주소 복사 | A | P1-08 §3.4 | 화살표 둘이 배열 하나로 | `copy = original` vs `new` + `Array.Copy` | `copy[0]=999` 뒤 `original[0]`? |
+| `array-alias` ✅ | 배열 대입은 주소 복사 | A | P1-08 §3.4, part6 04 A6 | 화살표 둘이 배열 하나로, 매개변수도 같은 배열로 | 메서드가 받은 배열을 그대로 고쳐 돌려줌 (대입·Clone 은 입력값으로) | `copy[0]=999` 뒤 `original[0]`? |
 | `pass-by-value-ref` | 값 전달과 ref | A | P1-11 §4 | `AddTen` 프레임의 x 가 사본 / ref | ref 제거 | 호출 뒤 n 은? |
 | `ref-param-reassign` | 매개변수에 new 를 넣으면 | A | P1-11 §3.1, §8 | 매개변수 화살표만 새 객체로 | 필드 수정과 new 재할당 비교 | 원본 Hp 는? |
 | `static-shared-counter` | static 은 하나뿐 | A | P1-12 §5 | 정적 영역 상자와 인스턴스들 | `_nextId` 를 인스턴스 필드로 | `potion.Id`, `CreatedCount`? |
@@ -39,7 +39,7 @@
 ## 3. 우선순위
 
 1. `value-vs-reference` (완료, 기준 샘플 1)
-2. `array-alias`, `pass-by-value-ref` (기준 샘플 2 후보: 메서드 프레임이 둘 이상인 표본)
+2. `array-alias` (완료, 기준 샘플 2), `pass-by-value-ref` (기록 도구의 ref 화살표가 먼저)
 3. A 묶음 나머지: `ref-param-reassign`, `static-shared-counter`, `boxing-unboxing`
 4. B 묶음: `struct-out-of-array`, `struct-field-vs-class-field`, `stack-frames`, `heap-reachability`
 5. C·D·E: `string-immutable`, `exception-propagation`, `list-removeat-skip`, `lambda-loop-capture`, `polymorphism-new-vs-override`, `multicast-event`

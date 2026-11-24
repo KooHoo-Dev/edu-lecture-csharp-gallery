@@ -61,11 +61,24 @@ edu-lecture-csharp-gallery/
 - 단계 보기를 '표시 줄 직전' 에서 '표시 줄 직후' 로 바꿨다. 그 줄이 한 일이 메모리에 보여야 수업에서 쓰기 좋다.
 - 교안 조사로 후보 16개를 골랐다 (selection.md).
 
+### 2026-11-23 기준 샘플 2
+
+- `array-alias` (교안 P1-08 §3.4, §8, part6 04 A6 해설). 대입(`copy = original`)과 메서드 전달(`Clamped(enemyHealths)`)이 같은 원리(주소 복사)임을 한 프로그램에 이었다. Main 과 Clamped 프레임 둘, 힙 배열 셋.
+- 입력값은 select 3개(`= original`, `new int[original.Length]`, `(int[])original.Clone()`)로, 값이 C# 식이다. 효과 끄기는 메서드 안 `int[] result = healths;` (원본을 고쳐 돌려줌).
+- 실행 6개(입력 3 × 보통·실수) 16칸씩, 기록 55KB. `gallery check` 전체 통과(경고 0), Unity 컴파일 통과.
+- 본 것: 힙 배치는 Main 부터 닿는 순서라 단계가 바뀌어도 배열 자리가 그대로다. 대신 위쪽 Clamped 프레임의 화살표가 아래 배열로 가며 Main 의 화살표와 엇갈린다. 자리가 움직이지 않는 쪽이 낫다고 보고 두었다.
+
+### 2026-11-24 비유 장면을 시도하고 걷어 냄
+
+- Jay 요청으로 편의점·물류 센터 비유를 무대에 넣어 봤다. 세 판을 만들었다: 메모리 패널을 테마로 다시 그린 비유 장면, 사람 캐릭터가 일하고 말하는 1장 애니메이션(2D), 같은 대본의 three.js 3D 디오라마.
+- Jay 결정: 비유는 강사가 말로 설명한다. 무대에서 비유를 모두 걷어 냈다 (장면·대본·three 의존성). 무대는 다시 코드 + 메모리 + 콘솔 한 화면이다.
+- 남긴 것: 기록 런타임의 힙 객체 번호를 실제 객체 정체성으로 고정한 것 (남은 일 5). 단계가 바뀌어도 같은 객체가 같은 번호라 메모리 그림 비교에도 낫다.
+
 ## 5. 남은 일
 
 1. GitHub Settings > Pages > Source 를 GitHub Actions 로 (Jay). 리포 생성과 첫 push 는 2026-11-23 에 했다.
 2. 예측 질문 (`steps[].ask`): 그 줄에서 멈추고 보기를 고르게 한 뒤 진행. 설계 4-3절. 무대와 meta 형식.
-3. 기준 샘플 2: 메서드 프레임이 둘 이상인 표본 (`pass-by-value-ref` 또는 `array-alias`). 기준 샘플 2개를 독립 리뷰한 뒤 워커 묶음으로.
+3. 기준 샘플 2개(`value-vs-reference`, `array-alias`) 독립 리뷰. 그 뒤 워커 묶음으로.
 4. 기록 도구: 문자열을 힙 객체로 그리는 선택(`string-immutable`), 박싱된 값을 힙 상자로(`boxing-unboxing`), `ref` 매개변수를 호출한 쪽 변수로 잇는 화살표(`pass-by-value-ref`). 지금 ref 매개변수는 값만 보인다.
-5. 힙 객체 번호는 칸마다 닿는 순서로 다시 매긴다. 순서가 바뀌는 표본에서 '바뀐 값' 노란 표시가 잘못 켜질 수 있다. 실제 객체 정체성(런타임에서 한 번 준 번호)을 유지하도록 고친다.
+5. (해결 2026-11-24) 힙 객체 번호를 실제 객체 정체성으로 고정했다.
 6. JayDispatch 잡 틀 (`jobs/`, `tools/workflow/`): 패턴 갤러리 것을 가져와 writePaths(`samples/<id>/`, `src/specimens/<id>/`, `truth/<id>/`, `src/shots/<id>/`), verify(`npm run trace -- <id>`, `check <id>`, `unity-compile <id>`) 로 바꾼다.
